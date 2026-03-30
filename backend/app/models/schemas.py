@@ -211,3 +211,23 @@ class CorrelationMatrix(BaseModel):
     pairs: list[CorrelationPair]  # notable pairs
     timestamp: datetime
 
+
+# ── Multi-Timeframe Analysis ──
+class TimeframeSignal(BaseModel):
+    timeframe: str  # "1h", "4h", "1d"
+    direction: str  # "LONG", "SHORT", "NEUTRAL"
+    strength: int  # 0-100
+    rsi: float | None = None
+    macd_hist: float | None = None
+    ema_trend: str  # "bullish", "bearish", "neutral"
+    bb_position: str  # "above_upper", "below_lower", "middle"
+
+
+class MultiTimeframe(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    timeframes: list[TimeframeSignal]
+    consensus: str  # "STRONG_LONG", "LONG", "NEUTRAL", "SHORT", "STRONG_SHORT"
+    timestamp: datetime
+

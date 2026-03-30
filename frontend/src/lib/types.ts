@@ -196,6 +196,26 @@ export interface CorrelationMatrix {
   timestamp: string;
 }
 
+// ── Multi-Timeframe Analysis ──
+export interface TimeframeSignal {
+  timeframe: string;
+  direction: string;
+  strength: number;
+  rsi: number | null;
+  macd_hist: number | null;
+  ema_trend: string;
+  bb_position: string;
+}
+
+export interface MultiTimeframe {
+  symbol: string;
+  name: string;
+  price: number;
+  timeframes: TimeframeSignal[];
+  consensus: string;
+  timestamp: string;
+}
+
 // ── Professional Dashboard ──
 export interface ProfessionalDashboard {
   price_spikes: PriceSpikeAlert[];
