@@ -60,6 +60,12 @@ async def get_latest_report(symbol: str):
     return get_report_by_id(items[0].id)
 
 
+@router.post("/analyze/all", response_model=list[AnalysisReport])
+async def trigger_all():
+    """Manually trigger analysis for all symbols."""
+    return await generate_all_reports()
+
+
 @router.post("/analyze/{symbol}", response_model=AnalysisReport)
 async def trigger_analysis(symbol: str):
     """Manually trigger analysis for a symbol."""
@@ -69,12 +75,6 @@ async def trigger_analysis(symbol: str):
     if not report:
         raise HTTPException(status_code=500, detail="Analysis failed")
     return report
-
-
-@router.post("/analyze/all", response_model=list[AnalysisReport])
-async def trigger_all():
-    """Manually trigger analysis for all symbols."""
-    return await generate_all_reports()
 
 
 @router.get("/symbols")
