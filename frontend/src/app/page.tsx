@@ -28,21 +28,32 @@ export default function Home() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [dashRes, reportsRes, proRes] = await Promise.all([
+      const [dashRes, reportsRes, proRes] = await Promise.allSettled([
         fetch(`${API}/dashboard`).then((r) => r.ok ? r.json() : null),
         fetch(`${API}/reports?limit=10`).then((r) => r.ok ? r.json() : []),
         fetch(`${API}/professional`).then((r) => r.ok ? r.json() : null),
       ]);
-      if (dashRes) setDashboard(dashRes);
-      if (proRes) setProDash(proRes);
-      if (reportsRes?.length) {
-        setReports(reportsRes);
-        const latestRes = await fetch(`${API}/reports/${reportsRes[0].id}`);
-        if (latestRes.ok) setActiveReport(await latestRes.json());
+      const dash = dashRes.status === "fulfilled" ? dashRes.value : null;
+      const reps = reportsRes.status === "fulfilled" ? reportsRes.value : [];
+      const pro = proRes.status === "fulfilled" ? proRes.value : null;
+
+      if (dash) setDashboard(dash);
+      if (pro) setProDash(pro);
+      if (reps?.length) {
+        setReports(reps);
+        try {
+          const latestRes = await fetch(`${API}/reports/${reps[0].id}`);
+          if (latestRes.ok) setActiveReport(await latestRes.json());
+        } catch { /* ignore */ }
       }
-      setError(null);
+      // Only show error if nothing loaded at all
+      if (!dash && !reps?.length && !pro) {
+        setError("无法连接后端服务，请确保后端已启动");
+      } else {
+        setError(null);
+      }
     } catch {
-      setError("无法连接后端服务，请确保后端已启动 (localhost:8000)");
+      setError("无法连接后端服务，请确保后端已启动");
     } finally {
       setLoading(false);
     }
