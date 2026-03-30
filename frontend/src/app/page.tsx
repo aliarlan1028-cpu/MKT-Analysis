@@ -24,6 +24,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"reports" | "pro">("reports");
+  const [analyzing, setAnalyzing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -152,7 +153,28 @@ export default function Home() {
               <ReportCard report={activeReport} />
             ) : (
               <div className="bg-card-bg border border-card-border rounded-xl p-8 text-center text-text-muted">
-                暂无分析报告，请等待下次定时分析或手动触发
+                <p className="mb-4">暂无分析报告，请等待下次定时分析或手动触发</p>
+                <button
+                  onClick={async () => {
+                    setAnalyzing(true);
+                    try {
+                      const res = await fetch(`${API}/analyze/all`, { method: "POST" });
+                      if (res.ok) {
+                        await fetchData();
+                      } else {
+                        alert("分析触发失败，请稍后重试");
+                      }
+                    } catch {
+                      alert("无法连接后端服务");
+                    } finally {
+                      setAnalyzing(false);
+                    }
+                  }}
+                  disabled={analyzing}
+                  className="px-4 py-2 bg-accent-blue text-white rounded-lg hover:bg-accent-blue/80 transition-colors disabled:opacity-50"
+                >
+                  {analyzing ? "⏳ 分析中，请稍候..." : "🚀 立即生成分析报告"}
+                </button>
               </div>
             )}
           </div>
