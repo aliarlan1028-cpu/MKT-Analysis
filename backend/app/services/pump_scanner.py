@@ -528,7 +528,7 @@ async def _claude_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[d
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-3-5-sonnet-20241022",
+                    "model": "claude-sonnet-4-6",
                     "max_tokens": 1024,
                     "messages": [{"role": "user", "content": prompt}],
                 },
