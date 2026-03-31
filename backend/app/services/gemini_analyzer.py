@@ -1,7 +1,7 @@
 """Gemini AI analysis with Google Search Grounding."""
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from google import genai
 from google.genai import types
 from app.core.config import settings
@@ -17,9 +17,12 @@ SESSION_LABELS = {
     "evening": "晚盘分析 22:00",
 }
 
+_BEIJING_TZ = timezone(timedelta(hours=8))
+
 
 def _get_session_name() -> str:
-    hour = datetime.now().hour
+    """Determine session based on Beijing time (UTC+8)."""
+    hour = datetime.now(_BEIJING_TZ).hour
     if hour < 10:
         return "morning"
     elif hour < 18:

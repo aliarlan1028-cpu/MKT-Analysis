@@ -38,8 +38,8 @@ class Settings:
     # Frontend
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-    # Symbols to track
-    SYMBOLS: list[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
+    # Symbols to track (BTC only — Gemini free tier rate limit)
+    SYMBOLS: list[str] = ["BTCUSDT"]
     SYMBOL_NAMES: dict[str, str] = {
         "BTCUSDT": "Bitcoin",
         "ETHUSDT": "Ethereum",
