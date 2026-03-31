@@ -507,10 +507,14 @@ async def _ai_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[dict]
     entry/stop-loss/take-profit levels.
     """
     if not settings.GEMINI_API_KEY:
+        print("  ⚠ GEMINI_API_KEY 未设置，跳过 AI 分析")
         return {"pre_pump": [], "dump_risk": []}
 
     if not pre_pump_top and not dump_risk_top:
+        print("  ⚠ 无候选币种，跳过 AI 分析")
         return {"pre_pump": [], "dump_risk": []}
+
+    print(f"  🤖 开始 Gemini AI 分析: {len(pre_pump_top)} pre-pump + {len(dump_risk_top)} dump-risk")
 
     def _coin_summary(c: dict) -> str:
         fr_str = f"{c['funding_rate']*100:.4f}%" if c.get('funding_rate') is not None else "N/A"
