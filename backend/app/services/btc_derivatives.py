@@ -25,45 +25,54 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
     score = 0  # positive = bullish, negative = bearish
     signals = []
 
-    # 1. Funding Rate
+    # 1. Funding Rate — more granular thresholds
     fr = core.get("funding_rate")
     if fr is not None:
-        if fr < -0.0003:
+        if fr < -0.0005:
             score += 2
-            signals.append("负费率(空头拥挤,利多)")
-        elif fr < 0:
+            signals.append("强负费率(空头拥挤,利多)")
+        elif fr < -0.0001:
             score += 1
-            signals.append("微负费率(偏多)")
-        elif fr > 0.001:
+            signals.append("负费率(偏多)")
+        elif fr > 0.0005:
             score -= 2
             signals.append("极高费率(多头拥挤,利空)")
-        elif fr > 0.0003:
+        elif fr > 0.00015:
             score -= 1
             signals.append("高费率(偏空)")
+        elif fr > 0:
+            # Normal positive funding — very slight bearish lean
+            signals.append("费率正常偏多头")
         else:
             signals.append("费率中性")
 
-    # 2. OI Change
+    # 2. OI Change — lower thresholds
     oi_chg = core.get("oi_change_pct")
     if oi_chg is not None:
-        if oi_chg > 5:
+        if oi_chg > 8:
+            score += 2
+            signals.append(f"OI大幅↑{oi_chg}%(强资金涌入)")
+        elif oi_chg > 3:
             score += 1
             signals.append(f"OI↑{oi_chg}%(资金涌入)")
-        elif oi_chg < -5:
+        elif oi_chg < -8:
+            score -= 2
+            signals.append(f"OI大幅↓{oi_chg}%(资金撤离)")
+        elif oi_chg < -3:
             score -= 1
-            signals.append(f"OI↓{oi_chg}%(资金撤离)")
+            signals.append(f"OI↓{oi_chg}%(资金流出)")
 
-    # 3. Liquidation ratio
+    # 3. Liquidation ratio — lower threshold
     liq_long = core.get("liq_long_usd", 0)
     liq_short = core.get("liq_short_usd", 0)
     total_liq = liq_long + liq_short
     if total_liq > 0:
-        if liq_long > liq_short * 3:
+        if liq_long > liq_short * 2:
             score += 1
-            signals.append("大量多头清算(可能筑底)")
-        elif liq_short > liq_long * 3:
+            signals.append("多头清算偏多(可能筑底)")
+        elif liq_short > liq_long * 2:
             score -= 1
-            signals.append("大量空头清算(可能见顶)")
+            signals.append("空头清算偏多(可能见顶)")
 
     # 4. EMA Trend
     ema_trend = tech.get("ema_trend", "neutral")
@@ -80,7 +89,7 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
         score -= 1
         signals.append("EMA偏空")
 
-    # 5. RSI Divergence
+    # 5. RSI — more granular, consider position within range
     rsi = tech.get("rsi")
     rsi_div = tech.get("rsi_divergence")
     if rsi_div == "bullish":
@@ -91,11 +100,19 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
         signals.append("RSI看跌背离")
     elif rsi is not None:
         if rsi > 75:
-            score -= 1
+            score -= 2
             signals.append(f"RSI={rsi}超买")
+        elif rsi > 60:
+            score -= 1
+            signals.append(f"RSI={rsi}偏高")
         elif rsi < 25:
-            score += 1
+            score += 2
             signals.append(f"RSI={rsi}超卖")
+        elif rsi < 40:
+            score += 1
+            signals.append(f"RSI={rsi}偏低")
+        else:
+            signals.append(f"RSI={rsi}中性")
 
     # 6. CVD
     cvd_trend = adv.get("cvd_trend")
@@ -105,6 +122,18 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
     elif cvd_trend == "distribution":
         score -= 1
         signals.append("CVD派发")
+
+    # 7. Price vs POC — additional context signal
+    price = tech.get("price") or core.get("price", 0)
+    poc = adv.get("poc_price")
+    if price and poc and poc > 0:
+        deviation = (price - poc) / poc * 100
+        if deviation > 2:
+            score += 1
+            signals.append("价格在POC上方(偏强)")
+        elif deviation < -2:
+            score -= 1
+            signals.append("价格在POC下方(偏弱)")
 
     # Determine direction
     if score >= 3:
