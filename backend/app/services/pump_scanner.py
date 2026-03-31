@@ -187,12 +187,18 @@ async def _enrich_with_klines(coin_data: dict) -> dict:
     coin_data["funding_rate"] = funding
 
     if klines and len(klines) >= 3:
-        closes = [float(k[4]) for k in klines]
-        volumes = [float(k[7]) for k in klines]  # volCcyQuote
+        # OKX kline: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+        # Last candle may be incomplete (confirm=0), exclude it for volume calc
+        confirmed = [k for k in klines if str(k[8]) == "1"] if len(klines[0]) > 8 else klines[:-1]
+        if len(confirmed) < 2:
+            confirmed = klines[:-1]  # fallback: exclude last candle
+
+        closes = [float(k[4]) for k in klines]  # use all closes for RSI/EMA (current price matters)
+        volumes_confirmed = [float(k[7]) for k in confirmed]  # only confirmed volumes
 
         coin_data["rsi"] = _calc_rsi(closes, 6)
         coin_data["bb_width"] = _calc_bb_width(closes)
-        coin_data["volume_ratio"] = _calc_volume_ratio(volumes)
+        coin_data["volume_ratio"] = _calc_volume_ratio(volumes_confirmed)
         coin_data["consecutive_up_days"] = _calc_consecutive_up_days(closes)
         coin_data["cumulative_return_7d"] = _calc_cumulative_return(closes, 7)
 
@@ -204,10 +210,10 @@ async def _enrich_with_klines(coin_data: dict) -> dict:
         else:
             coin_data["ema_deviation_pct"] = 0
 
-        # Volume trend: is volume increasing while price stable?
-        if len(volumes) >= 3:
-            vol_recent = sum(volumes[-2:]) / 2
-            vol_older = sum(volumes[:-2]) / max(len(volumes) - 2, 1)
+        # Volume trend: is confirmed volume increasing?
+        if len(volumes_confirmed) >= 3:
+            vol_recent = sum(volumes_confirmed[-2:]) / 2
+            vol_older = sum(volumes_confirmed[:-2]) / max(len(volumes_confirmed) - 2, 1)
             coin_data["volume_trend"] = round(
                 (vol_recent / vol_older) if vol_older > 0 else 1, 2
             )
@@ -416,9 +422,22 @@ async def scan_all_coins() -> dict:
         c["pre_pump_score"] = _score_pre_pump(c)
         c["dump_risk_score"] = _score_dump_risk(c)
 
-    # Step 6: Sort and return top 10 for each
-    pre_pump = sorted(enriched, key=lambda x: x["pre_pump_score"], reverse=True)[:10]
-    dump_risk = sorted(enriched, key=lambda x: x["dump_risk_score"], reverse=True)[:10]
+    # Step 6: Filter by minimum score + quality, then sort
+    MIN_PRE_PUMP_SCORE = 45    # only show confident picks
+    MIN_DUMP_RISK_SCORE = 15   # dump-risk already has a pump gate
+
+    pre_pump_all = [
+        c for c in enriched
+        if c["pre_pump_score"] >= MIN_PRE_PUMP_SCORE
+        and (c.get("volume_ratio") or 0) >= 0.3  # must have valid volume ratio
+    ]
+    dump_risk_all = [
+        c for c in enriched
+        if c["dump_risk_score"] >= MIN_DUMP_RISK_SCORE
+    ]
+
+    pre_pump = sorted(pre_pump_all, key=lambda x: x["pre_pump_score"], reverse=True)[:10]
+    dump_risk = sorted(dump_risk_all, key=lambda x: x["dump_risk_score"], reverse=True)[:10]
 
     # Format output
     def _fmt(c: dict, score_key: str) -> dict:
