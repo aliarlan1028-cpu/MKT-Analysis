@@ -10,6 +10,7 @@ import PostMortemPanel from "@/components/PostMortemPanel";
 import WhaleAlertPanel from "@/components/WhaleAlertPanel";
 import LiquidationPanel from "@/components/LiquidationPanel";
 import CorrelationPanel from "@/components/CorrelationPanel";
+import PumpScannerPanel from "@/components/PumpScannerPanel";
 import type {
   DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard,
 } from "@/lib/types";
@@ -210,7 +211,10 @@ export default function Home() {
             <LiquidationPanel data={proDash.liquidation || []} />
           </div>
 
-          {/* Row 3: Correlation Matrix */}
+          {/* Row 3: Pump & Dump Scanner */}
+          <PumpScannerPanel data={proDash.pump_scanner || null} />
+
+          {/* Row 4: Correlation Matrix */}
           <CorrelationPanel data={proDash.correlation} />
         </div>
       )}

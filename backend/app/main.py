@@ -13,6 +13,7 @@ from app.api.routes import router
 from app.services.report_generator import generate_all_reports
 from app.services.postmortem import init_postmortem_table, evaluate_all_expired
 from app.services.price_spike import start_monitor, stop_monitor
+from app.services.pump_scanner import scan_all_coins
 
 scheduler = AsyncIOScheduler()
 
@@ -53,8 +54,16 @@ async def lifespan(app: FastAPI):
         name="Post-Mortem Signal Evaluation",
         replace_existing=True,
     )
+    # Schedule pump & dump scanner every 15 minutes
+    scheduler.add_job(
+        scan_all_coins,
+        CronTrigger(minute="*/15", timezone="UTC"),
+        id="pump_scanner",
+        name="Pump & Dump Scanner",
+        replace_existing=True,
+    )
     scheduler.start()
-    print("  ✓ Scheduler started (reports + post-mortem evaluation)")
+    print("  ✓ Scheduler started (reports + post-mortem + pump scanner)")
 
     # Start BTC price spike monitor
     start_monitor()

@@ -15,6 +15,7 @@ from app.services.whale_alert import get_whale_alerts
 from app.services.liquidation import get_liquidation_map, get_all_liquidation_maps
 from app.services.correlation import get_correlation_matrix
 from app.services.price_spike import get_spike_alerts
+from app.services.pump_scanner import scan_all_coins
 
 router = APIRouter()
 
@@ -147,16 +148,25 @@ async def correlation_matrix():
     return await get_correlation_matrix()
 
 
+# ── Pump & Dump Scanner ──
+
+@router.get("/pump-scanner")
+async def pump_scanner():
+    """Scan all OKX USDT perpetuals for pre-pump and dump-risk coins."""
+    return await scan_all_coins()
+
+
 # ── Professional Dashboard (all-in-one) ──
 
 @router.get("/professional")
 async def professional_dashboard():
     """Get all professional features in one call."""
     import asyncio
-    whale, correlation, liquidation = await asyncio.gather(
+    whale, correlation, liquidation, scanner = await asyncio.gather(
         get_whale_alerts(),
         get_correlation_matrix(),
         get_all_liquidation_maps(),
+        scan_all_coins(),
         return_exceptions=True,
     )
     return {
@@ -164,6 +174,7 @@ async def professional_dashboard():
         "whale_alerts": whale if not isinstance(whale, Exception) else {"transactions": [], "summary": {}},
         "correlation": correlation if not isinstance(correlation, Exception) else None,
         "liquidation": liquidation if not isinstance(liquidation, Exception) else [],
+        "pump_scanner": scanner if not isinstance(scanner, Exception) else {"pre_pump": [], "dump_risk": [], "total_scanned": 0},
         "postmortems": get_postmortems(limit=10),
         "win_rate": get_win_rate(),
         "timestamp": datetime.now(timezone.utc).isoformat(),

@@ -216,12 +216,38 @@ export interface MultiTimeframe {
   timestamp: string;
 }
 
+// ── Pump & Dump Scanner ──
+export interface PumpCandidate {
+  coin: string;
+  inst_id: string;
+  price: number;
+  change_pct_24h: number;
+  volume_24h: number;
+  open_interest: number;
+  funding_rate: number | null;
+  rsi: number | null;
+  bb_width: number | null;
+  volume_ratio: number | null;
+  cumulative_return_7d: number;
+  ema_deviation_pct: number;
+  consecutive_up_days: number;
+  score: number;
+}
+
+export interface PumpScannerResult {
+  pre_pump: PumpCandidate[];
+  dump_risk: PumpCandidate[];
+  total_scanned: number;
+  timestamp: string;
+}
+
 // ── Professional Dashboard ──
 export interface ProfessionalDashboard {
   price_spikes: PriceSpikeAlert[];
   whale_alerts: WhaleAlertResponse;
   correlation: CorrelationMatrix | null;
   liquidation: LiquidationMap[];
+  pump_scanner: PumpScannerResult | null;
   postmortems: PostMortem[];
   win_rate: WinRateStats;
   timestamp: string;
