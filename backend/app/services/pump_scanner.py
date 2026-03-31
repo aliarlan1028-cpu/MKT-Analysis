@@ -528,7 +528,7 @@ async def _claude_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[d
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 1024,
                     "messages": [{"role": "user", "content": prompt}],
                 },
@@ -544,7 +544,7 @@ async def _claude_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[d
                     print(f"  🤖 Claude AI analysis complete for {len(pre_pump_top)}+{len(dump_risk_top)} coins")
                     return parsed
             else:
-                print(f"  ⚠ Claude API error: {resp.status_code}")
+                print(f"  ⚠ Claude API error: {resp.status_code} — {resp.text[:200]}")
     except Exception as e:
         print(f"  ⚠ Claude AI analysis failed: {e}")
 
