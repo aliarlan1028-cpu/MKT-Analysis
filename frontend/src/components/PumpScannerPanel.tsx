@@ -85,6 +85,16 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
           <span>{c.consecutive_up_days}天</span>
         </div>
       </div>
+
+      {/* AI Analysis */}
+      {c.ai_analysis && (
+        <div className="mt-2 p-2 bg-bg-primary/50 rounded border border-accent-blue/20">
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-[10px] text-accent-blue font-semibold">🤖 AI 分析</span>
+          </div>
+          <p className="text-xs text-text-muted leading-relaxed">{c.ai_analysis}</p>
+        </div>
+      )}
     </div>
   );
 }

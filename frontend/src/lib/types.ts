@@ -232,6 +232,7 @@ export interface PumpCandidate {
   ema_deviation_pct: number;
   consecutive_up_days: number;
   score: number;
+  ai_analysis?: string | null;
 }
 
 export interface PumpScannerResult {

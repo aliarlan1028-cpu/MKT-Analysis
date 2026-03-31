@@ -23,6 +23,9 @@ class Settings:
     OKX_API_SECRET: str = os.getenv("OKX_API_SECRET", "")
     OKX_API_PASSPHRASE: str = os.getenv("OKX_API_PASSPHRASE", "")
 
+    # Claude (Anthropic)
+    CLAUDE_API_KEY: str = os.getenv("CLAUDE_API_KEY", "")
+
     # CoinMarketCap (fallback data source)
     CMC_API_KEY: str = os.getenv("CMC_API_KEY", "")
 

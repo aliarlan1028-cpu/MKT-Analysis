@@ -15,7 +15,7 @@ from app.services.whale_alert import get_whale_alerts
 from app.services.liquidation import get_liquidation_map, get_all_liquidation_maps
 from app.services.correlation import get_correlation_matrix
 from app.services.price_spike import get_spike_alerts
-from app.services.pump_scanner import scan_all_coins
+from app.services.pump_scanner import scan_all_coins, get_scanner_postmortems
 
 router = APIRouter()
 
@@ -154,6 +154,12 @@ async def correlation_matrix():
 async def pump_scanner():
     """Scan all OKX USDT perpetuals for pre-pump and dump-risk coins."""
     return await scan_all_coins()
+
+
+@router.get("/pump-scanner/postmortems")
+async def scanner_postmortems(limit: int = 30):
+    """Get scanner postmortem stats and recent evaluation results."""
+    return get_scanner_postmortems(limit=limit)
 
 
 # ── Professional Dashboard (all-in-one) ──
