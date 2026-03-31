@@ -115,13 +115,38 @@ async def _analyze_spike_cause(spike: dict) -> str:
             ),
         )
         raw = response.text or ""
+        # Strip markdown code fences
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1]
-            if raw.endswith("```"):
-                raw = raw[: raw.rfind("```")]
+        if raw.rstrip().endswith("```"):
+            raw = raw[: raw.rfind("```")]
+        if raw.lstrip().startswith("json"):
+            raw = raw.lstrip()[4:]
 
         import json
-        data = json.loads(raw.strip())
+        raw = raw.strip()
+        # Try to extract JSON object even if response is truncated
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            raw = raw[start:end]
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            # Attempt to fix truncated JSON: close unclosed strings and arrays
+            fixed = raw
+            # Close unclosed string
+            if fixed.count('"') % 2 != 0:
+                fixed += '"'
+            # Close unclosed array
+            open_brackets = fixed.count('[') - fixed.count(']')
+            fixed += ']' * open_brackets
+            # Close unclosed object
+            open_braces = fixed.count('{') - fixed.count('}')
+            fixed += '}' * open_braces
+            data = json.loads(fixed)
+
         return data
     except Exception as e:
         print(f"  ⚠ Gemini spike analysis failed: {e}")

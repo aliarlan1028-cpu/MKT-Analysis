@@ -7,7 +7,7 @@ Identifies:
 
 import asyncio
 import json
-import httpx
+
 import math
 import sqlite3
 import os
@@ -456,21 +456,20 @@ async def scan_all_coins() -> dict:
             "ema_deviation_pct": c.get("ema_deviation_pct", 0),
             "consecutive_up_days": c.get("consecutive_up_days", 0),
             "score": c[score_key],
-            "ai_analysis": None,  # will be filled by Claude
+            "ai_analysis": None,  # will be filled by Gemini AI
         }
 
     pre_pump_fmt = [_fmt(c, "pre_pump_score") for c in pre_pump]
     dump_risk_fmt = [_fmt(c, "dump_risk_score") for c in dump_risk]
 
-    # Claude AI analysis for top 3 of each category
-    if settings.CLAUDE_API_KEY:
-        ai_results = await _claude_batch_analysis(pre_pump_fmt[:3], dump_risk_fmt[:3])
-        for i, analysis in enumerate(ai_results.get("pre_pump", [])):
-            if i < len(pre_pump_fmt):
-                pre_pump_fmt[i]["ai_analysis"] = analysis
-        for i, analysis in enumerate(ai_results.get("dump_risk", [])):
-            if i < len(dump_risk_fmt):
-                dump_risk_fmt[i]["ai_analysis"] = analysis
+    # AI analysis for top 3 of each category (Gemini or Claude)
+    ai_results = await _ai_batch_analysis(pre_pump_fmt[:3], dump_risk_fmt[:3])
+    for i, analysis in enumerate(ai_results.get("pre_pump", [])):
+        if i < len(pre_pump_fmt):
+            pre_pump_fmt[i]["ai_analysis"] = analysis
+    for i, analysis in enumerate(ai_results.get("dump_risk", [])):
+        if i < len(dump_risk_fmt):
+            dump_risk_fmt[i]["ai_analysis"] = analysis
 
     now = datetime.now(timezone.utc)
     result = {
@@ -497,12 +496,15 @@ async def scan_all_coins() -> dict:
 
 
 # ═══════════════════════════════════════════
-# Claude AI Analysis
+# AI Analysis (Gemini with Google Search)
 # ═══════════════════════════════════════════
 
-async def _claude_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[dict]) -> dict:
-    """Call Claude API to generate analysis for top candidates."""
-    if not settings.CLAUDE_API_KEY:
+async def _ai_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[dict]) -> dict:
+    """Call Gemini AI to generate analysis for top candidates."""
+    if not settings.GEMINI_API_KEY:
+        return {"pre_pump": [], "dump_risk": []}
+
+    if not pre_pump_top and not dump_risk_top:
         return {"pre_pump": [], "dump_risk": []}
 
     def _coin_summary(c: dict) -> str:
@@ -518,54 +520,71 @@ async def _claude_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[d
     pre_pump_text = "\n".join([_coin_summary(c) for c in pre_pump_top]) if pre_pump_top else "无"
     dump_risk_text = "\n".join([_coin_summary(c) for c in dump_risk_top]) if dump_risk_top else "无"
 
+    n_pre = len(pre_pump_top)
+    n_dump = len(dump_risk_top)
+
     prompt = f"""你是一位专业的加密货币永续合约分析师。请分析以下OKX永续合约扫描结果。
 
-## 🚀 潜力拉升候选（蓄势待发，尚未大涨）:
+## 潜力拉升候选（蓄势待发，尚未大涨）:
 {pre_pump_text}
 
-## 💣 暴跌预警候选（已大涨，可能即将回调）:
+## 暴跌预警候选（已大涨，可能即将回调）:
 {dump_risk_text}
 
-请为每个币种提供简短精准的分析（每个30-50字），包含：
-1. 关键信号解读（为什么被选中）
-2. 操作建议（适合做多/做空/观望）
-3. 风险提醒
+请为每个币种提供简短精准的分析（每个30-50字），包含：关键信号解读、操作建议、风险提醒。
 
-严格按以下JSON格式返回，不要添加任何其他文字：
-{{
-  "pre_pump": ["币种1分析", "币种2分析", "币种3分析"],
-  "dump_risk": ["币种1分析", "币种2分析", "币种3分析"]
-}}"""
+严格按以下JSON格式返回，纯JSON无markdown：
+{{"pre_pump": [{", ".join(['"分析' + str(i+1) + '"' for i in range(n_pre)])}], "dump_risk": [{", ".join(['"分析' + str(i+1) + '"' for i in range(n_dump)])}]}}"""
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.CLAUDE_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 1024,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                text = data["content"][0]["text"]
-                # Extract JSON from response
-                start = text.find("{")
-                end = text.rfind("}") + 1
-                if start >= 0 and end > start:
-                    parsed = json.loads(text[start:end])
-                    print(f"  🤖 Claude AI analysis complete for {len(pre_pump_top)}+{len(dump_risk_top)} coins")
-                    return parsed
-            else:
-                print(f"  ⚠ Claude API error: {resp.status_code} — {resp.text[:200]}")
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        google_search_tool = types.Tool(google_search=types.GoogleSearch())
+
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[google_search_tool],
+                temperature=0.3,
+                max_output_tokens=2048,
+            ),
+        )
+        raw = response.text or ""
+        # Strip markdown code fences
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1]
+        if raw.rstrip().endswith("```"):
+            raw = raw[: raw.rfind("```")]
+        if raw.lstrip().startswith("json"):
+            raw = raw.lstrip()[4:]
+
+        raw = raw.strip()
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            raw = raw[start:end]
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            # Fix truncated JSON
+            fixed = raw
+            if fixed.count('"') % 2 != 0:
+                fixed += '"'
+            open_brackets = fixed.count('[') - fixed.count(']')
+            fixed += ']' * open_brackets
+            open_braces = fixed.count('{') - fixed.count('}')
+            fixed += '}' * open_braces
+            parsed = json.loads(fixed)
+
+        print(f"  🤖 Gemini AI analysis complete for {n_pre}+{n_dump} coins")
+        return parsed
+
     except Exception as e:
-        print(f"  ⚠ Claude AI analysis failed: {e}")
+        print(f"  ⚠ Gemini AI analysis failed: {e}")
 
     return {"pre_pump": [], "dump_risk": []}
 
