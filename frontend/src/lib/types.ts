@@ -298,10 +298,27 @@ export interface BtcDerivativesAdvanced {
   error?: string;
 }
 
+export interface BtcVerdictLevel {
+  label: string;
+  price: number;
+}
+
+export interface BtcVerdict {
+  direction: string;
+  direction_cn: string;
+  strength: string;
+  score: number;
+  signals: string[];
+  key_levels: BtcVerdictLevel[];
+  summary: string;
+  price: number;
+}
+
 export interface BtcDerivativesData {
   core: BtcDerivativesCore;
   technical: BtcDerivativesTechnical;
   advanced: BtcDerivativesAdvanced;
+  verdict: BtcVerdict;
   timestamp: string;
 }
 

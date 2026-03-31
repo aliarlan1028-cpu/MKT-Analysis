@@ -55,132 +55,128 @@ export default function BtcDashboard() {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">📈 BTC 衍生品仪表盘</h2>
 
-      {/* ── CORE ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* ── CORE + TECHNICAL (6 cards in one row) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Funding Rate */}
-        <div className="bg-card-bg border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text-muted">💰 资金费率</h3>
-            <span className="text-xs text-text-muted" title="正费率=多头付费给空头，做空有优势；负费率反之">ⓘ</span>
+        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-xs font-semibold text-text-muted">💰 资金费率</h3>
+            <span className="text-xs text-text-muted" title="正费率=多头付费给空头；负费率反之">ⓘ</span>
           </div>
-          <div className={`text-2xl font-bold ${(c.funding_rate ?? 0) >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+          <div className={`text-lg font-bold ${(c.funding_rate ?? 0) >= 0 ? "text-accent-green" : "text-accent-red"}`}>
             {c.funding_rate != null ? `${(c.funding_rate * 100).toFixed(4)}%` : "N/A"}
           </div>
           {c.next_funding_rate != null && (
-            <p className="text-xs text-text-muted mt-1">
+            <p className="text-xs text-text-muted mt-0.5">
               预测: <span className={(c.next_funding_rate >= 0) ? "text-accent-green" : "text-accent-red"}>
                 {(c.next_funding_rate * 100).toFixed(4)}%
               </span>
             </p>
           )}
-          <p className="text-xs text-text-muted mt-2 leading-relaxed">
-            {(c.funding_rate ?? 0) > 0.0003 ? "⚠️ 费率偏高，多头过度拥挤" :
-             (c.funding_rate ?? 0) < -0.0003 ? "⚠️ 负费率，空头过度拥挤" :
-             "✅ 费率正常范围"}
+          <p className="text-xs text-text-muted mt-1">
+            {(c.funding_rate ?? 0) > 0.0003 ? "⚠️ 多头拥挤" :
+             (c.funding_rate ?? 0) < -0.0003 ? "⚠️ 空头拥挤" :
+             "✅ 正常"}
           </p>
         </div>
 
         {/* Open Interest */}
-        <div className="bg-card-bg border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text-muted">📊 持仓量 (OI)</h3>
-            <span className="text-xs text-text-muted" title="OI上升+价格上涨=趋势确认；OI下降+价格下跌=多头平仓">ⓘ</span>
+        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-xs font-semibold text-text-muted">📊 持仓量</h3>
+            <span className="text-xs text-text-muted" title="OI↑+价格↑=趋势确认；OI↓=平仓潮">ⓘ</span>
           </div>
-          <div className="text-2xl font-bold">{fmtUsd(c.oi_usd)}</div>
+          <div className="text-lg font-bold">{fmtUsd(c.oi_usd)}</div>
           <p className="text-xs text-text-muted">{fmt(c.oi_coin)} BTC</p>
           {c.oi_change_pct != null && (
-            <p className={`text-sm font-mono mt-1 ${c.oi_change_pct >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+            <p className={`text-xs font-mono mt-0.5 ${c.oi_change_pct >= 0 ? "text-accent-green" : "text-accent-red"}`}>
               24h: {c.oi_change_pct >= 0 ? "+" : ""}{c.oi_change_pct}%
             </p>
           )}
         </div>
 
         {/* Liquidations */}
-        <div className="bg-card-bg border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text-muted">💥 近期清算</h3>
-            <span className="text-xs text-text-muted" title="大量多头清算=已到底？大量空头清算=已到顶？">ⓘ</span>
+        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-xs font-semibold text-text-muted">💥 清算</h3>
+            <span className="text-xs text-text-muted" title="多头清算多=可能到底；空头清算多=可能到顶">ⓘ</span>
           </div>
-          <div className="space-y-1">
-            <div className="flex justify-between text-sm">
-              <span className="text-accent-red">多头清算</span>
+          <div className="space-y-0.5 text-xs">
+            <div className="flex justify-between">
+              <span className="text-accent-red">多头</span>
               <span className="font-mono">{fmtUsd(c.liq_long_usd)}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-accent-green">空头清算</span>
+            <div className="flex justify-between">
+              <span className="text-accent-green">空头</span>
               <span className="font-mono">{fmtUsd(c.liq_short_usd)}</span>
             </div>
           </div>
-          <p className="text-xs text-text-muted mt-2">共 {c.liq_count} 笔 {c.liq_ratio != null ? `| 多/空比 ${c.liq_ratio}` : ""}</p>
+          <p className="text-xs text-text-muted mt-1">{c.liq_count}笔 {c.liq_ratio != null ? `| 比${c.liq_ratio}` : ""}</p>
         </div>
-      </div>
 
-      {/* ── TECHNICAL ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* EMA Trend */}
-        <div className="bg-card-bg border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text-muted">📐 EMA 趋势</h3>
-            <span className="text-xs text-text-muted" title="价格>EMA21>EMA55>EMA200=强多头排列">ⓘ</span>
+        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-xs font-semibold text-text-muted">📐 EMA趋势</h3>
+            <span className="text-xs text-text-muted" title="价格>EMA21>55>200=强多头排列">ⓘ</span>
           </div>
-          <div className={`text-lg font-bold ${trendInfo.color}`}>{trendInfo.text}</div>
-          <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-            <div><span className="text-text-muted">EMA21</span><p className="font-mono">${fmt(t.ema_21, 0)}</p></div>
-            <div><span className="text-text-muted">EMA55</span><p className="font-mono">${fmt(t.ema_55, 0)}</p></div>
-            <div><span className="text-text-muted">EMA200</span><p className="font-mono">${fmt(t.ema_200, 0)}</p></div>
+          <div className={`text-sm font-bold ${trendInfo.color}`}>{trendInfo.text}</div>
+          <div className="grid grid-cols-3 gap-1 mt-1 text-xs">
+            <div><span className="text-text-muted">21</span><p className="font-mono">${fmt(t.ema_21, 0)}</p></div>
+            <div><span className="text-text-muted">55</span><p className="font-mono">${fmt(t.ema_55, 0)}</p></div>
+            <div><span className="text-text-muted">200</span><p className="font-mono">${fmt(t.ema_200, 0)}</p></div>
           </div>
         </div>
 
         {/* RSI */}
-        <div className="bg-card-bg border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text-muted">📉 RSI 背离</h3>
-            <span className="text-xs text-text-muted" title="RSI>70超买，<30超卖。看背离信号更有效">ⓘ</span>
+        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-xs font-semibold text-text-muted">📉 RSI</h3>
+            <span className="text-xs text-text-muted" title="RSI>70超买，<30超卖">ⓘ</span>
           </div>
-          <div className={`text-2xl font-bold ${
+          <div className={`text-lg font-bold ${
             (t.rsi ?? 50) > 70 ? "text-accent-red" :
             (t.rsi ?? 50) < 30 ? "text-accent-green" : ""
           }`}>
             {t.rsi ?? "N/A"}
           </div>
-          {/* RSI bar */}
-          <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
-            <div className="h-2 rounded-full" style={{
+          <div className="w-full bg-gray-700 rounded-full h-1.5 mt-1">
+            <div className="h-1.5 rounded-full" style={{
               width: `${Math.min(t.rsi ?? 50, 100)}%`,
               background: (t.rsi ?? 50) > 70 ? "#ef4444" : (t.rsi ?? 50) < 30 ? "#22c55e" : "#3b82f6"
             }} />
           </div>
           {t.rsi_divergence && (
-            <p className={`text-sm font-semibold mt-2 ${t.rsi_divergence === "bullish" ? "text-accent-green" : "text-accent-red"}`}>
+            <p className={`text-xs font-semibold mt-1 ${t.rsi_divergence === "bullish" ? "text-accent-green" : "text-accent-red"}`}>
               ⚡ {t.rsi_divergence === "bullish" ? "看涨背离" : "看跌背离"}
             </p>
           )}
         </div>
 
         {/* ATR Stop-Loss */}
-        <div className="bg-card-bg border border-card-border rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-text-muted">🛡️ ATR 止损</h3>
-            <span className="text-xs text-text-muted" title="基于波动率的动态止损，1.5x ATR 止损，3x ATR 止盈">ⓘ</span>
+        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-xs font-semibold text-text-muted">🛡️ ATR止损</h3>
+            <span className="text-xs text-text-muted" title="1.5x ATR 止损，3x ATR 止盈">ⓘ</span>
           </div>
-          <p className="text-xs text-text-muted mb-2">ATR(14) = <span className="font-mono">${fmt(t.atr, 0)}</span></p>
-          <div className="space-y-2">
-            <div className="bg-accent-green/10 rounded-lg p-2">
-              <p className="text-xs text-accent-green font-semibold">📈 做多参考</p>
-              <div className="flex justify-between text-xs mt-1">
-                <span className="text-text-muted">止损</span><span className="font-mono text-accent-red">${fmt(t.long_stop_loss, 0)}</span>
+          <p className="text-xs text-text-muted">ATR=${fmt(t.atr, 0)}</p>
+          <div className="space-y-1 mt-1">
+            <div className="bg-accent-green/10 rounded p-1.5">
+              <p className="text-xs text-accent-green font-semibold">📈 多</p>
+              <div className="flex justify-between text-xs">
+                <span className="text-text-muted">SL</span><span className="font-mono text-accent-red">${fmt(t.long_stop_loss, 0)}</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-text-muted">止盈</span><span className="font-mono text-accent-green">${fmt(t.long_take_profit, 0)}</span>
+                <span className="text-text-muted">TP</span><span className="font-mono text-accent-green">${fmt(t.long_take_profit, 0)}</span>
               </div>
             </div>
-            <div className="bg-accent-red/10 rounded-lg p-2">
-              <p className="text-xs text-accent-red font-semibold">📉 做空参考</p>
-              <div className="flex justify-between text-xs mt-1">
-                <span className="text-text-muted">止损</span><span className="font-mono text-accent-red">${fmt(t.short_stop_loss, 0)}</span>
+            <div className="bg-accent-red/10 rounded p-1.5">
+              <p className="text-xs text-accent-red font-semibold">📉 空</p>
+              <div className="flex justify-between text-xs">
+                <span className="text-text-muted">SL</span><span className="font-mono text-accent-red">${fmt(t.short_stop_loss, 0)}</span>
               </div>
               <div className="flex justify-between text-xs">
-                <span className="text-text-muted">止盈</span><span className="font-mono text-accent-green">${fmt(t.short_take_profit, 0)}</span>
+                <span className="text-text-muted">TP</span><span className="font-mono text-accent-green">${fmt(t.short_take_profit, 0)}</span>
               </div>
             </div>
           </div>

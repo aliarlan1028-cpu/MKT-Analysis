@@ -12,6 +12,7 @@ import LiquidationPanel from "@/components/LiquidationPanel";
 import CorrelationPanel from "@/components/CorrelationPanel";
 import PumpScannerPanel from "@/components/PumpScannerPanel";
 import BtcDashboard from "@/components/BtcDashboard";
+import BtcVerdictCard from "@/components/BtcVerdictCard";
 import type {
   DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard,
 } from "@/lib/types";
@@ -113,6 +114,7 @@ export default function Home() {
               <MarketCard key={m.symbol} data={m} />
             ))}
             <FearGreedGauge data={dashboard.fear_greed} />
+            <BtcVerdictCard />
           </div>
         </section>
       )}
