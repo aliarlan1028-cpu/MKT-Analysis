@@ -580,7 +580,7 @@ pre_pump数组必须有{n_pre}个元素，dump_risk数组必须有{n_dump}个元
         google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
         response = client.models.generate_content(
-            model=settings.GEMINI_MODEL,
+            model="gemini-2.0-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[google_search_tool],
