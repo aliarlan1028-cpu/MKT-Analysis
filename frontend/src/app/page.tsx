@@ -120,13 +120,10 @@ export default function Home() {
           </div>
           {/* Row 2: AI Verdict (full width) */}
           <BtcVerdictCard />
+          {/* Row 3: Collapsible BTC derivatives details */}
+          <BtcDashboard />
         </section>
       )}
-
-      {/* BTC Derivatives Dashboard */}
-      <section className="mb-8">
-        <BtcDashboard />
-      </section>
 
       {/* Tab Navigation */}
       <div className="flex gap-2 mb-6 border-b border-card-border pb-2">

@@ -51,10 +51,10 @@ async def _fetch_funding_rate(inst_id: str) -> float | None:
     return None
 
 
-async def _fetch_klines_7d(inst_id: str) -> list[list] | None:
-    """Fetch 7-day daily klines for an instrument."""
+async def _fetch_klines(inst_id: str) -> list[list] | None:
+    """Fetch 4H klines (42 candles ≈ 7 days) for richer technical data."""
     body = await _okx_get("/api/v5/market/candles", {
-        "instId": inst_id, "bar": "1D", "limit": "7"
+        "instId": inst_id, "bar": "4H", "limit": "42"
     })
     if body and body.get("data"):
         return body["data"][::-1]  # reverse to ascending order
@@ -176,33 +176,42 @@ async def _analyze_coin(ticker: dict, oi_map: dict[str, float]) -> dict | None:
 
 
 async def _enrich_with_klines(coin_data: dict) -> dict:
-    """Fetch klines and funding rate, compute advanced indicators."""
+    """Fetch 4H klines and funding rate, compute advanced indicators."""
     inst_id = coin_data["inst_id"]
 
     # Fetch klines and funding in parallel
-    klines_task = _fetch_klines_7d(inst_id)
+    klines_task = _fetch_klines(inst_id)
     funding_task = _fetch_funding_rate(inst_id)
     klines, funding = await asyncio.gather(klines_task, funding_task)
 
     coin_data["funding_rate"] = funding
 
-    if klines and len(klines) >= 3:
+    if klines and len(klines) >= 6:
         # OKX kline: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
-        # Last candle may be incomplete (confirm=0), exclude it for volume calc
         confirmed = [k for k in klines if str(k[8]) == "1"] if len(klines[0]) > 8 else klines[:-1]
-        if len(confirmed) < 2:
-            confirmed = klines[:-1]  # fallback: exclude last candle
+        if len(confirmed) < 4:
+            confirmed = klines[:-1]
 
-        closes = [float(k[4]) for k in klines]  # use all closes for RSI/EMA (current price matters)
-        volumes_confirmed = [float(k[7]) for k in confirmed]  # only confirmed volumes
+        closes = [float(k[4]) for k in klines]
+        volumes_confirmed = [float(k[7]) for k in confirmed]  # USDT volume
 
-        coin_data["rsi"] = _calc_rsi(closes, 6)
-        coin_data["bb_width"] = _calc_bb_width(closes)
+        # RSI with proper 14-period on 4H data (enough data points now)
+        coin_data["rsi"] = _calc_rsi(closes, 14)
+        coin_data["bb_width"] = _calc_bb_width(closes, 20)
         coin_data["volume_ratio"] = _calc_volume_ratio(volumes_confirmed)
-        coin_data["consecutive_up_days"] = _calc_consecutive_up_days(closes)
-        coin_data["cumulative_return_7d"] = _calc_cumulative_return(closes, 7)
 
-        ema21 = _calc_ema(closes, min(5, len(closes)))
+        # Convert 4H bars to daily closes for consecutive_up_days / cumulative_return
+        # Group 4H bars into days (6 bars per day)
+        daily_closes = []
+        for i in range(0, len(closes) - 5, 6):
+            daily_closes.append(closes[min(i + 5, len(closes) - 1)])
+        if len(daily_closes) < 2:
+            daily_closes = closes[::6]  # fallback
+        coin_data["consecutive_up_days"] = _calc_consecutive_up_days(daily_closes)
+        coin_data["cumulative_return_7d"] = _calc_cumulative_return(closes, len(closes))
+
+        # EMA deviation — use 21-period EMA on 4H (meaningful with 42 bars)
+        ema21 = _calc_ema(closes, 21)
         if ema21 and ema21 > 0:
             coin_data["ema_deviation_pct"] = round(
                 (closes[-1] - ema21) / ema21 * 100, 2
@@ -210,20 +219,25 @@ async def _enrich_with_klines(coin_data: dict) -> dict:
         else:
             coin_data["ema_deviation_pct"] = 0
 
-        # Volume trend: is confirmed volume increasing?
-        if len(volumes_confirmed) >= 3:
-            vol_recent = sum(volumes_confirmed[-2:]) / 2
-            vol_older = sum(volumes_confirmed[:-2]) / max(len(volumes_confirmed) - 2, 1)
+        # Volume trend: recent 6 bars (24h) vs prior average
+        if len(volumes_confirmed) >= 12:
+            vol_recent = sum(volumes_confirmed[-6:]) / 6
+            vol_older = sum(volumes_confirmed[:-6]) / max(len(volumes_confirmed) - 6, 1)
             coin_data["volume_trend"] = round(
                 (vol_recent / vol_older) if vol_older > 0 else 1, 2
             )
         else:
             coin_data["volume_trend"] = 1.0
+
+        # OI in USD (fix unit mismatch: oi is in coins, convert to USD)
+        oi_coins = coin_data.get("open_interest", 0)
+        price = coin_data.get("price", 0)
+        coin_data["oi_usd"] = oi_coins * price if oi_coins and price else 0
     else:
         coin_data.update({
             "rsi": None, "bb_width": None, "volume_ratio": None,
             "consecutive_up_days": 0, "cumulative_return_7d": 0,
-            "ema_deviation_pct": 0, "volume_trend": 1.0,
+            "ema_deviation_pct": 0, "volume_trend": 1.0, "oi_usd": 0,
         })
 
     return coin_data
@@ -232,66 +246,77 @@ async def _enrich_with_klines(coin_data: dict) -> dict:
 def _score_pre_pump(c: dict) -> float:
     """Score 0-100 for pre-pump (accumulation) potential.
 
-    High score = volume surge + OI growth + low price volatility (BB squeeze).
+    High score = volume surge + OI/volume ratio (USD) + BB squeeze + funding signal.
     """
     score = 0.0
 
-    # 1. Volume surge (30% weight) — volume increasing vs historical
+    # 1. Volume surge (25% weight) — volume increasing vs historical
     vol_ratio = c.get("volume_ratio") or 1.0
     if vol_ratio > 3.0:
-        score += 30
+        score += 25
     elif vol_ratio > 2.0:
-        score += 22
+        score += 18
     elif vol_ratio > 1.5:
-        score += 15
+        score += 12
     elif vol_ratio > 1.2:
-        score += 8
+        score += 6
 
-    # 2. OI growth signal (25% weight) — high OI relative to volume = positions building
-    oi = c.get("open_interest", 0)
+    # 2. OI/Volume ratio in USD (20% weight) — positions building relative to trading
+    oi_usd = c.get("oi_usd", 0)
     vol = c.get("volume_24h", 1)
-    if oi > 0 and vol > 0:
-        oi_vol_ratio = oi / vol
-        if oi_vol_ratio > 0.5:
-            score += 25
-        elif oi_vol_ratio > 0.3:
-            score += 18
-        elif oi_vol_ratio > 0.15:
-            score += 10
+    if oi_usd > 0 and vol > 0:
+        oi_vol_ratio = oi_usd / vol
+        if oi_vol_ratio > 0.8:
+            score += 20   # very high OI relative to volume = heavy positioning
+        elif oi_vol_ratio > 0.4:
+            score += 14
+        elif oi_vol_ratio > 0.2:
+            score += 8
+        elif oi_vol_ratio > 0.1:
+            score += 4
 
-    # 3. BB squeeze / low volatility (20% weight)
+    # 3. BB squeeze / low volatility (20% weight) — 20-period on 4H data
     bb = c.get("bb_width")
     if bb is not None:
-        if bb < 1.0:
-            score += 20  # very tight
-        elif bb < 2.0:
-            score += 14
+        if bb < 1.5:
+            score += 20  # very tight squeeze
         elif bb < 3.0:
+            score += 14
+        elif bb < 5.0:
             score += 8
 
-    # 4. Funding rate shift (15% weight) — slightly positive = longs building
+    # 4. Funding rate signal (20% weight)
     fr = c.get("funding_rate")
     if fr is not None:
-        if 0.0001 < fr < 0.0005:
-            score += 15  # mild positive = accumulation
-        elif 0 < fr <= 0.0001:
+        # Negative funding = shorts paying → short squeeze potential (strong pre-pump)
+        if fr < -0.0005:
+            score += 20  # heavily negative = high squeeze potential
+        elif fr < -0.0002:
+            score += 15
+        elif fr < 0:
             score += 10
-        elif -0.0001 < fr <= 0:
-            score += 5  # neutral
+        # Mildly positive = early longs accumulating
+        elif 0 < fr < 0.0003:
+            score += 8
+        # High positive = already crowded, less pre-pump potential
+        elif fr >= 0.0005:
+            score += 0
 
-    # 5. Price near breakout (10% weight) — small positive change, not yet pumped
-    change = abs(c.get("change_pct_24h", 0))
-    if 1.0 < change < 5.0:
-        score += 10  # starting to move
-    elif 0.5 < change <= 1.0:
+    # 5. Volume trend acceleration (15% weight)
+    vol_trend = c.get("volume_trend", 1.0)
+    if vol_trend > 2.0:
+        score += 15
+    elif vol_trend > 1.5:
+        score += 10
+    elif vol_trend > 1.2:
         score += 6
 
     # Penalty: if already pumped hard, reduce score
     cum_ret = c.get("cumulative_return_7d", 0)
     if cum_ret > 20:
-        score *= 0.5  # already pumped, not pre-pump
+        score *= 0.4  # already pumped, not pre-pump
     elif cum_ret > 10:
-        score *= 0.7
+        score *= 0.65
 
     return min(round(score, 1), 100)
 
@@ -361,11 +386,11 @@ def _score_dump_risk(c: dict) -> float:
     elif change_24h > 3 and vol_ratio < 0.9:
         score += 6
 
-    # 6. OI at extreme (10% weight) — very high OI = crowded trade
-    oi = c.get("open_interest", 0)
+    # 6. OI at extreme (10% weight) — very high OI/Volume ratio (both in USD)
+    oi_usd = c.get("oi_usd", 0)
     vol = c.get("volume_24h", 1)
-    if oi > 0 and vol > 0:
-        oi_vol = oi / vol
+    if oi_usd > 0 and vol > 0:
+        oi_vol = oi_usd / vol
         if oi_vol > 1.0:
             score += 10  # extremely crowded
         elif oi_vol > 0.6:
@@ -423,8 +448,8 @@ async def scan_all_coins() -> dict:
         c["dump_risk_score"] = _score_dump_risk(c)
 
     # Step 6: Filter by minimum score + quality, then sort
-    MIN_PRE_PUMP_SCORE = 45    # only show confident picks
-    MIN_DUMP_RISK_SCORE = 15   # dump-risk already has a pump gate
+    MIN_PRE_PUMP_SCORE = 40    # only show confident picks
+    MIN_DUMP_RISK_SCORE = 25   # dump-risk already has a pump gate, raise to reduce noise
 
     pre_pump_all = [
         c for c in enriched

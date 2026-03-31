@@ -60,16 +60,16 @@ export default function BtcTopCards() {
         </div>
         <div className="grid grid-cols-3 gap-3 text-sm">
           <div>
-            <span className="text-text-muted">EMA 21</span>
-            <p className="font-mono">${fmt(t.ema_21, 0)}</p>
+            <span className="text-text-muted block">EMA 21</span>
+            <p className="font-mono truncate">${fmt(t.ema_21, 0)}</p>
           </div>
           <div>
-            <span className="text-text-muted">EMA 55</span>
-            <p className="font-mono">${fmt(t.ema_55, 0)}</p>
+            <span className="text-text-muted block">EMA 55</span>
+            <p className="font-mono truncate">${fmt(t.ema_55, 0)}</p>
           </div>
           <div>
-            <span className="text-text-muted">EMA 200</span>
-            <p className="font-mono">${fmt(t.ema_200, 0)}</p>
+            <span className="text-text-muted block">EMA 200</span>
+            <p className="font-mono truncate">${fmt(t.ema_200, 0)}</p>
           </div>
         </div>
       </div>
@@ -85,10 +85,10 @@ export default function BtcTopCards() {
             ATR ${fmt(t.atr, 0)}
           </span>
         </div>
-        <div className="space-y-3">
-          <div className="bg-accent-green/5 border border-accent-green/20 rounded-lg p-3">
-            <p className="text-sm text-accent-green font-semibold mb-2">📈 做多</p>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="space-y-2">
+          <div className="bg-accent-green/5 border border-accent-green/20 rounded-lg px-3 py-2">
+            <p className="text-xs text-accent-green font-semibold mb-1">📈 做多</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-text-muted">止损</span>
                 <p className="font-mono text-accent-red">${fmt(t.long_stop_loss, 0)}</p>
@@ -99,9 +99,9 @@ export default function BtcTopCards() {
               </div>
             </div>
           </div>
-          <div className="bg-accent-red/5 border border-accent-red/20 rounded-lg p-3">
-            <p className="text-sm text-accent-red font-semibold mb-2">📉 做空</p>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="bg-accent-red/5 border border-accent-red/20 rounded-lg px-3 py-2">
+            <p className="text-xs text-accent-red font-semibold mb-1">📉 做空</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-text-muted">止损</span>
                 <p className="font-mono text-accent-red">${fmt(t.short_stop_loss, 0)}</p>

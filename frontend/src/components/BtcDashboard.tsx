@@ -17,13 +17,6 @@ function fmtUsd(n: number | null | undefined): string {
   return `$${n.toFixed(0)}`;
 }
 
-const TREND_LABELS: Record<string, { text: string; color: string }> = {
-  strong_bull: { text: "强势多头 🟢🟢", color: "text-accent-green" },
-  bull: { text: "偏多 🟢", color: "text-accent-green" },
-  neutral: { text: "震荡 ⚪", color: "text-text-muted" },
-  bear: { text: "偏空 🔴", color: "text-accent-red" },
-  strong_bear: { text: "强势空头 🔴🔴", color: "text-accent-red" },
-};
 
 export default function BtcDashboard() {
   const [data, setData] = useState<BtcDerivativesData | null>(null);
@@ -53,20 +46,16 @@ export default function BtcDashboard() {
 
   return (
     <div>
-      {/* Collapsible header */}
+      {/* Toggle button */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 w-full text-left mb-3 group"
+        className="flex items-center gap-1 text-xs text-text-muted hover:text-white transition-colors mb-3"
       >
-        <h2 className="text-lg font-semibold">📈 BTC 衍生品仪表盘</h2>
-        <span className="text-text-muted text-sm group-hover:text-white transition-colors">
-          {expanded ? "▲ 收起" : "▼ 展开详情"}
-        </span>
+        <span>{expanded ? "▲ 收起衍生品详情" : "▼ 展开衍生品详情"}</span>
       </button>
 
       {expanded && (
-        <div className="space-y-4 animate-in fade-in duration-200">
-          {/* ── Remaining cards: Funding + OI + Liquidation + RSI + Volume Profile ── */}
+        <div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             {/* Funding Rate */}
             <div className="bg-card-bg border border-card-border rounded-xl p-3">
@@ -190,24 +179,6 @@ export default function BtcDashboard() {
             </div>
           </div>
 
-          {/* ── Usage Guide ── */}
-          <div className="bg-card-bg border border-card-border rounded-xl p-4">
-            <h3 className="text-sm font-semibold mb-2">🧭 组合使用指南</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-text-muted leading-relaxed">
-              <div>
-                <p className="text-white font-semibold mb-1">🟢 做多信号确认</p>
-                <p>资金费率为负 + OI上升 + EMA多头排列 + RSI看涨背离 + CVD吸筹 → 高概率做多</p>
-              </div>
-              <div>
-                <p className="text-white font-semibold mb-1">🔴 做空信号确认</p>
-                <p>费率极高 + 大量多头清算 + EMA空头排列 + RSI看跌背离 + CVD派发 → 高概率做空</p>
-              </div>
-              <div>
-                <p className="text-white font-semibold mb-1">⚡ 关键支撑/阻力</p>
-                <p>POC价格为最强支撑/阻力；VAH上方突破看涨，VAL下方跌破看跌；ATR止损控制风险</p>
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
