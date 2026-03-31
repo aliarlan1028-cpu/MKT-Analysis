@@ -1,6 +1,6 @@
 "use client";
 
-import type { PumpScannerResult, PumpCandidate } from "@/lib/types";
+import type { PumpScannerResult, PumpCandidate, AiTradeSignal } from "@/lib/types";
 
 function scoreColor(score: number): string {
   if (score >= 70) return "text-accent-green";
@@ -22,6 +22,22 @@ function scoreBar(score: number, color: string): React.ReactElement {
   );
 }
 
+function actionBadge(action: string) {
+  if (action === "做多") return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30">📈 做多</span>;
+  if (action === "做空") return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">📉 做空</span>;
+  return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">⏸ 观望</span>;
+}
+
+function confidenceBadge(conf: string) {
+  if (conf === "high") return <span className="text-[10px] text-green-400">🟢 高确信</span>;
+  if (conf === "medium") return <span className="text-[10px] text-yellow-400">🟡 中确信</span>;
+  return <span className="text-[10px] text-red-400">🔴 低确信</span>;
+}
+
+function isStructuredAi(ai: unknown): ai is AiTradeSignal {
+  return typeof ai === "object" && ai !== null && "action" in ai && "entry_price" in ai;
+}
+
 function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
   const isPump = type === "pump";
   const barColor = isPump ? "bg-accent-green" : "bg-accent-red";
@@ -35,11 +51,14 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
           : "text-accent-green"
       : "text-text-muted";
 
+  const ai = c.ai_analysis;
+
   return (
     <div className="border border-card-border rounded-lg p-3 hover:border-accent-blue/40 transition-colors">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="font-bold text-sm">{c.coin}</span>
+          <span className="text-xs text-text-muted">${c.price}</span>
           <span className={`text-xs font-medium ${c.change_pct_24h >= 0 ? "text-accent-green" : "text-accent-red"}`}>
             {c.change_pct_24h >= 0 ? "+" : ""}{c.change_pct_24h.toFixed(2)}%
           </span>
@@ -86,13 +105,38 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
         </div>
       </div>
 
-      {/* AI Analysis */}
-      {c.ai_analysis && (
-        <div className="mt-2 p-2 bg-bg-primary/50 rounded border border-accent-blue/20">
-          <div className="flex items-center gap-1 mb-1">
-            <span className="text-[10px] text-accent-blue font-semibold">🤖 AI 分析</span>
+      {/* AI Trade Signal */}
+      {ai && isStructuredAi(ai) && (
+        <div className="mt-3 p-2.5 bg-bg-primary/60 rounded-lg border border-accent-blue/25">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-accent-blue font-semibold">🤖 AI 交易信号</span>
+              {confidenceBadge(ai.confidence)}
+            </div>
+            {actionBadge(ai.action)}
           </div>
-          <p className="text-xs text-text-muted leading-relaxed">{c.ai_analysis}</p>
+          <div className="grid grid-cols-3 gap-1.5 mb-2">
+            <div className="bg-card-bg/80 rounded px-2 py-1 text-center">
+              <span className="block text-[9px] opacity-50">入场价</span>
+              <span className="text-xs font-bold text-accent-blue">{ai.entry_price}</span>
+            </div>
+            <div className="bg-card-bg/80 rounded px-2 py-1 text-center">
+              <span className="block text-[9px] opacity-50">止损</span>
+              <span className="text-xs font-bold text-accent-red">{ai.stop_loss}</span>
+            </div>
+            <div className="bg-card-bg/80 rounded px-2 py-1 text-center">
+              <span className="block text-[9px] opacity-50">止盈</span>
+              <span className="text-xs font-bold text-accent-green">{ai.take_profit}</span>
+            </div>
+          </div>
+          <p className="text-xs text-text-muted leading-relaxed">{ai.reasoning}</p>
+        </div>
+      )}
+      {/* Fallback for plain text AI analysis */}
+      {ai && !isStructuredAi(ai) && typeof ai === "string" && (
+        <div className="mt-2 p-2 bg-bg-primary/50 rounded border border-accent-blue/20">
+          <span className="text-[10px] text-accent-blue font-semibold">🤖 AI 分析</span>
+          <p className="text-xs text-text-muted leading-relaxed mt-1">{ai}</p>
         </div>
       )}
     </div>
@@ -114,7 +158,7 @@ export default function PumpScannerPanel({ data }: { data: PumpScannerResult | n
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold">🔍 Pump & Dump 扫描器</h3>
         <span className="text-xs text-text-muted">
-          已扫描 {data.total_scanned} 个合约
+          已扫描 {data.total_scanned} 个合约 · Top 3
         </span>
       </div>
 
@@ -124,10 +168,13 @@ export default function PumpScannerPanel({ data }: { data: PumpScannerResult | n
           <h4 className="text-xs font-semibold text-accent-green mb-2 flex items-center gap-1">
             🚀 潜力拉升榜 <span className="text-text-muted font-normal">— 蓄势待发</span>
           </h4>
-          <div className="space-y-2 max-h-[500px] overflow-y-auto">
-            {data.pre_pump.map((c) => (
+          <div className="space-y-2">
+            {data.pre_pump.slice(0, 3).map((c) => (
               <CoinRow key={c.inst_id} c={c} type="pump" />
             ))}
+            {data.pre_pump.length === 0 && (
+              <p className="text-text-muted text-xs text-center py-3">暂无达标币种</p>
+            )}
           </div>
         </div>
 
@@ -136,10 +183,13 @@ export default function PumpScannerPanel({ data }: { data: PumpScannerResult | n
           <h4 className="text-xs font-semibold text-accent-red mb-2 flex items-center gap-1">
             💣 暴跌预警榜 <span className="text-text-muted font-normal">— 过度拉伸</span>
           </h4>
-          <div className="space-y-2 max-h-[500px] overflow-y-auto">
-            {data.dump_risk.map((c) => (
+          <div className="space-y-2">
+            {data.dump_risk.slice(0, 3).map((c) => (
               <CoinRow key={c.inst_id} c={c} type="dump" />
             ))}
+            {data.dump_risk.length === 0 && (
+              <p className="text-text-muted text-xs text-center py-3">暂无达标币种</p>
+            )}
           </div>
         </div>
       </div>

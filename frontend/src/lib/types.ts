@@ -217,6 +217,15 @@ export interface MultiTimeframe {
 }
 
 // ── Pump & Dump Scanner ──
+export interface AiTradeSignal {
+  action: string;        // "做多" | "做空" | "观望"
+  confidence: string;    // "high" | "medium" | "low"
+  entry_price: string;   // e.g. "$0.00001050"
+  stop_loss: string;     // e.g. "$0.00001000"
+  take_profit: string;   // e.g. "$0.00001200"
+  reasoning: string;     // 40-80 chars analysis with news/factors
+}
+
 export interface PumpCandidate {
   coin: string;
   inst_id: string;
@@ -232,7 +241,7 @@ export interface PumpCandidate {
   ema_deviation_pct: number;
   consecutive_up_days: number;
   score: number;
-  ai_analysis?: string | null;
+  ai_analysis?: AiTradeSignal | string | null;
 }
 
 export interface PumpScannerResult {
