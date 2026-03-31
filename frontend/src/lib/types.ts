@@ -251,6 +251,60 @@ export interface PumpScannerResult {
   timestamp: string;
 }
 
+// ── BTC Derivatives Dashboard ──
+export interface BtcDerivativesCore {
+  price: number;
+  funding_rate: number | null;
+  next_funding_rate: number | null;
+  oi_coin: number | null;
+  oi_usd: number | null;
+  oi_change_pct: number | null;
+  liq_long_usd: number;
+  liq_short_usd: number;
+  liq_count: number;
+  liq_ratio: number | null;
+}
+
+export interface BtcDerivativesTechnical {
+  price: number;
+  ema_21: number | null;
+  ema_55: number | null;
+  ema_200: number | null;
+  ema_trend: string;
+  rsi: number | null;
+  rsi_divergence: string | null;
+  atr: number | null;
+  long_stop_loss: number | null;
+  short_stop_loss: number | null;
+  long_take_profit: number | null;
+  short_take_profit: number | null;
+  error?: string;
+}
+
+export interface VolumeProfileLevel {
+  price: number;
+  volume: number;
+}
+
+export interface BtcDerivativesAdvanced {
+  cvd_current: number;
+  cvd_24h_change: number;
+  cvd_trend: string;
+  volume_profile: VolumeProfileLevel[];
+  poc_price: number | null;
+  poc_volume: number | null;
+  value_area_high: number | null;
+  value_area_low: number | null;
+  error?: string;
+}
+
+export interface BtcDerivativesData {
+  core: BtcDerivativesCore;
+  technical: BtcDerivativesTechnical;
+  advanced: BtcDerivativesAdvanced;
+  timestamp: string;
+}
+
 // ── Professional Dashboard ──
 export interface ProfessionalDashboard {
   price_spikes: PriceSpikeAlert[];

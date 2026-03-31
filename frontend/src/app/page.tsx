@@ -11,6 +11,7 @@ import WhaleAlertPanel from "@/components/WhaleAlertPanel";
 import LiquidationPanel from "@/components/LiquidationPanel";
 import CorrelationPanel from "@/components/CorrelationPanel";
 import PumpScannerPanel from "@/components/PumpScannerPanel";
+import BtcDashboard from "@/components/BtcDashboard";
 import type {
   DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard,
 } from "@/lib/types";
@@ -115,6 +116,11 @@ export default function Home() {
           </div>
         </section>
       )}
+
+      {/* BTC Derivatives Dashboard */}
+      <section className="mb-8">
+        <BtcDashboard />
+      </section>
 
       {/* Tab Navigation */}
       <div className="flex gap-2 mb-6 border-b border-card-border pb-2">

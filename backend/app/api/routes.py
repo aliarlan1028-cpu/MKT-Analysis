@@ -16,6 +16,7 @@ from app.services.liquidation import get_liquidation_map, get_all_liquidation_ma
 from app.services.correlation import get_correlation_matrix
 from app.services.price_spike import get_spike_alerts
 from app.services.pump_scanner import scan_all_coins, get_scanner_postmortems
+from app.services.btc_derivatives import get_btc_derivatives
 
 router = APIRouter()
 
@@ -160,6 +161,14 @@ async def pump_scanner():
 async def scanner_postmortems(limit: int = 30):
     """Get scanner postmortem stats and recent evaluation results."""
     return get_scanner_postmortems(limit=limit)
+
+
+# ── BTC Derivatives Dashboard ──
+
+@router.get("/btc-derivatives")
+async def btc_derivatives():
+    """Get BTC derivatives dashboard: funding, OI, liquidations, technicals, CVD, volume profile."""
+    return await get_btc_derivatives()
 
 
 # ── Professional Dashboard (all-in-one) ──
