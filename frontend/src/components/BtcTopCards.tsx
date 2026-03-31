@@ -58,18 +58,18 @@ export default function BtcTopCards() {
         <div className={`text-2xl font-bold mb-4 ${trendInfo.color}`}>
           ${fmt(t.price, 0)}
         </div>
-        <div className="grid grid-cols-3 gap-3 text-sm">
+        <div className="grid grid-cols-3 gap-2 text-xs">
           <div>
-            <span className="text-text-muted block">EMA 21</span>
-            <p className="font-mono truncate">${fmt(t.ema_21, 0)}</p>
+            <span className="text-text-muted block text-[10px]">EMA 21</span>
+            <p className="font-mono">${fmt(t.ema_21, 0)}</p>
           </div>
           <div>
-            <span className="text-text-muted block">EMA 55</span>
-            <p className="font-mono truncate">${fmt(t.ema_55, 0)}</p>
+            <span className="text-text-muted block text-[10px]">EMA 55</span>
+            <p className="font-mono">${fmt(t.ema_55, 0)}</p>
           </div>
           <div>
-            <span className="text-text-muted block">EMA 200</span>
-            <p className="font-mono truncate">${fmt(t.ema_200, 0)}</p>
+            <span className="text-text-muted block text-[10px]">EMA 200</span>
+            <p className="font-mono">${fmt(t.ema_200, 0)}</p>
           </div>
         </div>
       </div>
