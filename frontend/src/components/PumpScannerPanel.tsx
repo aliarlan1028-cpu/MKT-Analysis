@@ -1,6 +1,6 @@
 "use client";
 
-import type { PumpScannerResult, PumpCandidate, AiTradeSignal } from "@/lib/types";
+import type { PumpScannerResult, PumpCandidate } from "@/lib/types";
 
 function scoreColor(score: number): string {
   if (score >= 70) return "text-accent-green";
@@ -22,22 +22,6 @@ function scoreBar(score: number, color: string): React.ReactElement {
   );
 }
 
-function actionBadge(action: string) {
-  if (action === "做多") return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30">📈 做多</span>;
-  if (action === "做空") return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">📉 做空</span>;
-  return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">⏸ 观望</span>;
-}
-
-function confidenceBadge(conf: string) {
-  if (conf === "high") return <span className="text-[10px] text-green-400">🟢 高确信</span>;
-  if (conf === "medium") return <span className="text-[10px] text-yellow-400">🟡 中确信</span>;
-  return <span className="text-[10px] text-red-400">🔴 低确信</span>;
-}
-
-function isStructuredAi(ai: unknown): ai is AiTradeSignal {
-  return typeof ai === "object" && ai !== null && "action" in ai && "entry_price" in ai;
-}
-
 function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
   const isPump = type === "pump";
   const barColor = isPump ? "bg-accent-green" : "bg-accent-red";
@@ -50,8 +34,6 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
           ? "text-accent-yellow"
           : "text-accent-green"
       : "text-text-muted";
-
-  const ai = c.ai_analysis;
 
   return (
     <div className="border border-card-border rounded-lg p-3 hover:border-accent-blue/40 transition-colors">
@@ -105,40 +87,7 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
         </div>
       </div>
 
-      {/* AI Trade Signal */}
-      {ai && isStructuredAi(ai) && (
-        <div className="mt-3 p-2.5 bg-bg-primary/60 rounded-lg border border-accent-blue/25">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-accent-blue font-semibold">🤖 AI 交易信号</span>
-              {confidenceBadge(ai.confidence)}
-            </div>
-            {actionBadge(ai.action)}
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 mb-2">
-            <div className="bg-card-bg/80 rounded px-2 py-1 text-center">
-              <span className="block text-[9px] opacity-50">入场价</span>
-              <span className="text-xs font-bold text-accent-blue">{ai.entry_price}</span>
-            </div>
-            <div className="bg-card-bg/80 rounded px-2 py-1 text-center">
-              <span className="block text-[9px] opacity-50">止损</span>
-              <span className="text-xs font-bold text-accent-red">{ai.stop_loss}</span>
-            </div>
-            <div className="bg-card-bg/80 rounded px-2 py-1 text-center">
-              <span className="block text-[9px] opacity-50">止盈</span>
-              <span className="text-xs font-bold text-accent-green">{ai.take_profit}</span>
-            </div>
-          </div>
-          <p className="text-xs text-text-muted leading-relaxed">{ai.reasoning}</p>
-        </div>
-      )}
-      {/* Fallback for plain text AI analysis */}
-      {ai && !isStructuredAi(ai) && typeof ai === "string" && (
-        <div className="mt-2 p-2 bg-bg-primary/50 rounded border border-accent-blue/20">
-          <span className="text-[10px] text-accent-blue font-semibold">🤖 AI 分析</span>
-          <p className="text-xs text-text-muted leading-relaxed mt-1">{ai}</p>
-        </div>
-      )}
+
     </div>
   );
 }

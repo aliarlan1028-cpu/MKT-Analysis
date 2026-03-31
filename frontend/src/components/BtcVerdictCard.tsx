@@ -48,7 +48,7 @@ export default function BtcVerdictCard() {
   const strengthLabel = verdict.strength === "strong" ? "强" : verdict.strength === "moderate" ? "中" : "弱";
 
   return (
-    <div className={`${style.bg} border ${style.border} rounded-xl p-4 shadow-lg ${style.glow} col-span-1 md:col-span-2 lg:col-span-5`}>
+    <div className={`${style.bg} border ${style.border} rounded-xl p-4 shadow-lg ${style.glow}`}>
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold">🤖 AI 综合研判</h3>
         {ts && (

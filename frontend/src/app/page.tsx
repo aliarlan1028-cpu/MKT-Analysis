@@ -13,6 +13,7 @@ import CorrelationPanel from "@/components/CorrelationPanel";
 import PumpScannerPanel from "@/components/PumpScannerPanel";
 import BtcDashboard from "@/components/BtcDashboard";
 import BtcVerdictCard from "@/components/BtcVerdictCard";
+import BtcTopCards from "@/components/BtcTopCards";
 import type {
   DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard,
 } from "@/lib/types";
@@ -109,13 +110,16 @@ export default function Home() {
       {dashboard && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-4">📊 实时行情</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Row 1: Market cards + EMA + ATR + CVD (same size) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             {dashboard.markets.map((m) => (
               <MarketCard key={m.symbol} data={m} />
             ))}
             <FearGreedGauge data={dashboard.fear_greed} />
-            <BtcVerdictCard />
+            <BtcTopCards />
           </div>
+          {/* Row 2: AI Verdict (full width) */}
+          <BtcVerdictCard />
         </section>
       )}
 

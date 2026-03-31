@@ -456,20 +456,11 @@ async def scan_all_coins() -> dict:
             "ema_deviation_pct": c.get("ema_deviation_pct", 0),
             "consecutive_up_days": c.get("consecutive_up_days", 0),
             "score": c[score_key],
-            "ai_analysis": None,  # will be filled by Gemini AI
+            "ai_analysis": None,
         }
 
     pre_pump_fmt = [_fmt(c, "pre_pump_score") for c in pre_pump]
     dump_risk_fmt = [_fmt(c, "dump_risk_score") for c in dump_risk]
-
-    # AI analysis for top 3 of each category (Gemini or Claude)
-    ai_results = await _ai_batch_analysis(pre_pump_fmt[:3], dump_risk_fmt[:3])
-    for i, analysis in enumerate(ai_results.get("pre_pump", [])):
-        if i < len(pre_pump_fmt):
-            pre_pump_fmt[i]["ai_analysis"] = analysis
-    for i, analysis in enumerate(ai_results.get("dump_risk", [])):
-        if i < len(dump_risk_fmt):
-            dump_risk_fmt[i]["ai_analysis"] = analysis
 
     now = datetime.now(timezone.utc)
     result = {
@@ -495,134 +486,7 @@ async def scan_all_coins() -> dict:
 
 
 
-# ═══════════════════════════════════════════
-# AI Analysis (Gemini with Google Search)
-# ═══════════════════════════════════════════
 
-async def _ai_batch_analysis(pre_pump_top: list[dict], dump_risk_top: list[dict]) -> dict:
-    """Call Gemini AI with Google Search to independently research and analyze top candidates.
-
-    AI independently searches for latest news, whale activity, on-chain data for each coin,
-    then combines with scanner metrics to provide actionable trading signals with specific
-    entry/stop-loss/take-profit levels.
-    """
-    if not settings.GEMINI_API_KEY:
-        print("  ⚠ GEMINI_API_KEY 未设置，跳过 AI 分析")
-        return {"pre_pump": [], "dump_risk": []}
-
-    if not pre_pump_top and not dump_risk_top:
-        print("  ⚠ 无候选币种，跳过 AI 分析")
-        return {"pre_pump": [], "dump_risk": []}
-
-    print(f"  🤖 开始 Gemini AI 分析: {len(pre_pump_top)} pre-pump + {len(dump_risk_top)} dump-risk")
-
-    def _coin_summary(c: dict) -> str:
-        fr_str = f"{c['funding_rate']*100:.4f}%" if c.get('funding_rate') is not None else "N/A"
-        return (
-            f"{c['coin']}: 当前价格${c['price']}, 24h涨跌{c['change_pct_24h']:+.2f}%, "
-            f"7日累计涨幅{c.get('cumulative_return_7d',0):.1f}%, 资金费率{fr_str}, "
-            f"RSI={c.get('rsi','N/A')}, 量比{c.get('volume_ratio','N/A')}x, "
-            f"布林带宽度{c.get('bb_width','N/A')}, "
-            f"EMA偏离{c.get('ema_deviation_pct',0):.1f}%, 连涨{c.get('consecutive_up_days',0)}天, "
-            f"持仓量${c.get('open_interest',0):,.0f}, 算法评分{c['score']}"
-        )
-
-    pre_pump_text = "\n".join([_coin_summary(c) for c in pre_pump_top]) if pre_pump_top else "无"
-    dump_risk_text = "\n".join([_coin_summary(c) for c in dump_risk_top]) if dump_risk_top else "无"
-
-    n_pre = len(pre_pump_top)
-    n_dump = len(dump_risk_top)
-
-    prompt = f"""你是一位顶级加密货币永续合约交易员。你的任务不只是解读数据，而是**独立研究**每个币种并给出可执行的交易建议。
-
-## 第一步：独立研究（必须用Google搜索）
-对以下每个币种，你必须搜索：
-1. 最近24小时的相关新闻、公告、合作关系
-2. 社交媒体热度（Twitter/X上的讨论）
-3. 是否有即将到来的解锁、空投、升级等催化剂
-4. 大户/鲸鱼是否有异常动向
-
-## 第二步：结合扫描器数据分析
-
-### 🚀 潜力拉升候选（蓄势待发，适合做多）:
-{pre_pump_text}
-
-### 💣 暴跌预警候选（已过度拉伸，适合做空）:
-{dump_risk_text}
-
-## 第三步：输出交易建议
-
-对每个币种，给出：
-- **action**: "做多"或"做空"或"观望"
-- **confidence**: "high"/"medium"/"low"（结合新闻和数据的综合判断）
-- **entry_price**: 建议入场价格（基于支撑位/阻力位，不是当前价）
-- **stop_loss**: 止损价格
-- **take_profit**: 止盈价格
-- **reasoning**: 40-80字分析，必须包含你搜索到的新闻/因素，不要只复述数据
-
-严格按以下JSON格式返回，纯JSON无markdown无注释：
-{{
-  "pre_pump": [
-    {{"action":"做多/做空/观望","confidence":"high/medium/low","entry_price":"$价格","stop_loss":"$价格","take_profit":"$价格","reasoning":"分析..."}}
-  ],
-  "dump_risk": [
-    {{"action":"做多/做空/观望","confidence":"high/medium/low","entry_price":"$价格","stop_loss":"$价格","take_profit":"$价格","reasoning":"分析..."}}
-  ]
-}}
-
-pre_pump数组必须有{n_pre}个元素，dump_risk数组必须有{n_dump}个元素。"""
-
-    try:
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        google_search_tool = types.Tool(google_search=types.GoogleSearch())
-
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[google_search_tool],
-                temperature=0.3,
-                max_output_tokens=4096,
-            ),
-        )
-        raw = response.text or ""
-        # Strip markdown code fences
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1]
-        if raw.rstrip().endswith("```"):
-            raw = raw[: raw.rfind("```")]
-        if raw.lstrip().startswith("json"):
-            raw = raw.lstrip()[4:]
-
-        raw = raw.strip()
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            raw = raw[start:end]
-
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            # Fix truncated JSON
-            fixed = raw
-            if fixed.count('"') % 2 != 0:
-                fixed += '"'
-            open_brackets = fixed.count('[') - fixed.count(']')
-            fixed += ']' * open_brackets
-            open_braces = fixed.count('{') - fixed.count('}')
-            fixed += '}' * open_braces
-            parsed = json.loads(fixed)
-
-        print(f"  🤖 Gemini AI analysis complete for {n_pre}+{n_dump} coins")
-        return parsed
-
-    except Exception as e:
-        print(f"  ⚠ Gemini AI analysis failed: {e}")
-
-    return {"pre_pump": [], "dump_risk": []}
 
 
 # ═══════════════════════════════════════════
