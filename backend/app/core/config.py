@@ -38,17 +38,16 @@ class Settings:
     # Frontend
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-    # Symbols to track (BTC only — Gemini free tier rate limit)
-    SYMBOLS: list[str] = ["BTCUSDT"]
+    # Symbols to track (3 coins × 2 reports/day = 6 Gemini calls)
+    SYMBOLS: list[str] = ["BTCUSDT", "SOLUSDT", "SUIUSDT"]
     SYMBOL_NAMES: dict[str, str] = {
         "BTCUSDT": "Bitcoin",
-        "ETHUSDT": "Ethereum",
         "SOLUSDT": "Solana",
-        "BNBUSDT": "BNB",
+        "SUIUSDT": "SUI",
     }
 
     # Schedule times (Beijing time UTC+8)
-    SCHEDULE_HOURS: list[int] = [8, 12, 22]
+    SCHEDULE_HOURS: list[int] = [6, 20]
 
 
 settings = Settings()

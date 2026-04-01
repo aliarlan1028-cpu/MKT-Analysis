@@ -18,9 +18,8 @@ BINANCE_FUTURES_URLS = [
 # CoinMarketCap symbol mapping (strip USDT suffix)
 CMC_SYMBOLS = {
     "BTCUSDT": "BTC",
-    "ETHUSDT": "ETH",
     "SOLUSDT": "SOL",
-    "BNBUSDT": "BNB",
+    "SUIUSDT": "SUI",
 }
 
 
@@ -90,8 +89,9 @@ _OKX_INTERVAL_MAP = {
 # OKX symbol mapping (Binance format → OKX instId)
 _OKX_SYMBOL_MAP = {
     "BTCUSDT": "BTC-USDT",
-    "ETHUSDT": "ETH-USDT",
     "SOLUSDT": "SOL-USDT",
+    "SUIUSDT": "SUI-USDT",
+    "ETHUSDT": "ETH-USDT",
     "BNBUSDT": "BNB-USDT",
     "PAXGUSDT": "PAXG-USDT",
 }

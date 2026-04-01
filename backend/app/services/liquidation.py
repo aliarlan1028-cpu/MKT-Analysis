@@ -14,8 +14,9 @@ from app.core.config import settings
 # OKX contract value per contract (ctVal) — used to convert sz to coin amount
 _OKX_CT_VAL = {
     "BTC-USDT-SWAP": 0.01,   # 1 contract = 0.01 BTC
-    "ETH-USDT-SWAP": 0.1,    # 1 contract = 0.1 ETH
     "SOL-USDT-SWAP": 1.0,    # 1 contract = 1 SOL
+    "SUI-USDT-SWAP": 10.0,   # 1 contract = 10 SUI
+    "ETH-USDT-SWAP": 0.1,    # 1 contract = 0.1 ETH
     "BNB-USDT-SWAP": 1.0,    # 1 contract = 1 BNB
 }
 

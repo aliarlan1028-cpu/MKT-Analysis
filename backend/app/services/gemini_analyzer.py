@@ -12,9 +12,8 @@ from app.models.schemas import (
 from app.services.technical import format_indicators_for_prompt
 
 SESSION_LABELS = {
-    "morning": "早盘分析 08:00",
-    "noon": "午盘分析 12:00",
-    "evening": "晚盘分析 22:00",
+    "morning": "早盘分析 06:00",
+    "evening": "晚盘分析 20:00",
 }
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
@@ -23,10 +22,8 @@ _BEIJING_TZ = timezone(timedelta(hours=8))
 def _get_session_name() -> str:
     """Determine session based on Beijing time (UTC+8)."""
     hour = datetime.now(_BEIJING_TZ).hour
-    if hour < 10:
+    if hour < 13:
         return "morning"
-    elif hour < 18:
-        return "noon"
     return "evening"
 
 

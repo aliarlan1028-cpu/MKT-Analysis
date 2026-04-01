@@ -9,9 +9,8 @@ from app.services.market_data import fetch_cmc_batch, fetch_klines
 
 # Session validity windows (hours)
 SESSION_VALIDITY = {
-    "morning": 4,   # 08:00 → valid until 12:00
-    "noon": 10,     # 12:00 → valid until 22:00
-    "evening": 10,  # 22:00 → valid until 08:00 next day
+    "morning": 14,  # 06:00 → valid until 20:00
+    "evening": 10,  # 20:00 → valid until 06:00 next day
 }
 
 
