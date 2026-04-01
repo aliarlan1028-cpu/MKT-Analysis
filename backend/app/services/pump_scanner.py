@@ -570,27 +570,37 @@ async def scan_all_coins() -> dict:
 
     # Step 7: DeepSeek AI analysis for top candidates
     if pre_pump_fmt or dump_risk_fmt:
-        try:
-            from app.services.deepseek_analyzer import analyze_scanner_batch
-            print("  🤖 DeepSeek: analyzing scanner candidates...")
+        from app.core.config import settings as _cfg
+        if not _cfg.DEEPSEEK_API_KEY:
+            print("  ⚠ DeepSeek API key not set, skipping scanner AI analysis")
+        else:
+            try:
+                from app.services.deepseek_analyzer import analyze_scanner_batch
+                print(f"  🤖 DeepSeek: analyzing {len(pre_pump_fmt)} pre-pump + {len(dump_risk_fmt)} dump-risk candidates...")
 
-            pp_coro = analyze_scanner_batch(pre_pump_fmt, "pre_pump") if pre_pump_fmt else asyncio.sleep(0)
-            dr_coro = analyze_scanner_batch(dump_risk_fmt, "dump_risk") if dump_risk_fmt else asyncio.sleep(0)
-            pp_ai, dr_ai = await asyncio.gather(pp_coro, dr_coro)
+                pp_coro = analyze_scanner_batch(pre_pump_fmt, "pre_pump") if pre_pump_fmt else asyncio.sleep(0)
+                dr_coro = analyze_scanner_batch(dump_risk_fmt, "dump_risk") if dump_risk_fmt else asyncio.sleep(0)
+                pp_ai, dr_ai = await asyncio.gather(pp_coro, dr_coro)
 
-            if isinstance(pp_ai, list):
-                for i, ai in enumerate(pp_ai):
-                    if ai and i < len(pre_pump_fmt):
-                        pre_pump_fmt[i]["ai_analysis"] = ai
+                pp_count = 0
+                if isinstance(pp_ai, list):
+                    for i, ai in enumerate(pp_ai):
+                        if ai and i < len(pre_pump_fmt):
+                            pre_pump_fmt[i]["ai_analysis"] = ai
+                            pp_count += 1
 
-            if isinstance(dr_ai, list):
-                for i, ai in enumerate(dr_ai):
-                    if ai and i < len(dump_risk_fmt):
-                        dump_risk_fmt[i]["ai_analysis"] = ai
+                dr_count = 0
+                if isinstance(dr_ai, list):
+                    for i, ai in enumerate(dr_ai):
+                        if ai and i < len(dump_risk_fmt):
+                            dump_risk_fmt[i]["ai_analysis"] = ai
+                            dr_count += 1
 
-            print("  ✓ DeepSeek analysis complete")
-        except Exception as ds_err:
-            print(f"  ⚠ DeepSeek scanner analysis failed: {ds_err}")
+                print(f"  ✓ DeepSeek analysis complete: {pp_count} pre-pump + {dr_count} dump-risk enriched")
+            except Exception as ds_err:
+                import traceback
+                print(f"  ⚠ DeepSeek scanner analysis failed: {ds_err}")
+                traceback.print_exc()
 
     now = datetime.now(timezone.utc)
     result = {
