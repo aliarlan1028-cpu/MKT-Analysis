@@ -25,97 +25,126 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
     score = 0  # positive = bullish, negative = bearish
     signals = []
 
-    # 1. Funding Rate — more granular thresholds
+    # 1. Funding Rate — fine-grained: normal ~0.01% should also contribute
     fr = core.get("funding_rate")
     if fr is not None:
         if fr < -0.0005:
-            score += 2
-            signals.append("强负费率(空头拥挤,利多)")
+            score += 3
+            signals.append("强负费率(空头拥挤,轧空风险)")
         elif fr < -0.0001:
+            score += 2
+            signals.append("负费率(空头偏多,利多)")
+        elif fr < 0:
             score += 1
-            signals.append("负费率(偏多)")
+            signals.append("微负费率(偏多)")
         elif fr > 0.0005:
-            score -= 2
-            signals.append("极高费率(多头拥挤,利空)")
+            score -= 3
+            signals.append("极高费率(多头拥挤,回调风险)")
         elif fr > 0.00015:
+            score -= 2
+            signals.append("高费率(多头偏多,利空)")
+        elif fr > 0.00005:
             score -= 1
-            signals.append("高费率(偏空)")
-        elif fr > 0:
-            # Normal positive funding — very slight bearish lean
-            signals.append("费率正常偏多头")
+            signals.append("正费率(偏空)")
         else:
             signals.append("费率中性")
 
-    # 2. OI Change — lower thresholds
+    # 2. OI Change — lower thresholds for daily sensitivity
     oi_chg = core.get("oi_change_pct")
     if oi_chg is not None:
         if oi_chg > 8:
-            score += 2
-            signals.append(f"OI大幅↑{oi_chg}%(强资金涌入)")
+            score += 3
+            signals.append(f"OI暴增{oi_chg}%(强烈做多)")
         elif oi_chg > 3:
+            score += 2
+            signals.append(f"OI大幅↑{oi_chg}%(资金涌入)")
+        elif oi_chg > 1:
             score += 1
-            signals.append(f"OI↑{oi_chg}%(资金涌入)")
+            signals.append(f"OI↑{oi_chg}%(资金流入)")
         elif oi_chg < -8:
+            score -= 3
+            signals.append(f"OI暴跌{oi_chg}%(恐慌撤离)")
+        elif oi_chg < -3:
             score -= 2
             signals.append(f"OI大幅↓{oi_chg}%(资金撤离)")
-        elif oi_chg < -3:
+        elif oi_chg < -1:
             score -= 1
             signals.append(f"OI↓{oi_chg}%(资金流出)")
 
-    # 3. Liquidation ratio — lower threshold
+    # 3. Liquidation ratio — lower threshold + magnitude
     liq_long = core.get("liq_long_usd", 0)
     liq_short = core.get("liq_short_usd", 0)
     total_liq = liq_long + liq_short
     if total_liq > 0:
-        if liq_long > liq_short * 2:
+        if liq_long > liq_short * 3:
+            score += 2
+            signals.append("多头大量被清算(可能筑底)")
+        elif liq_long > liq_short * 1.5:
             score += 1
-            signals.append("多头清算偏多(可能筑底)")
-        elif liq_short > liq_long * 2:
+            signals.append("多头清算偏多(偏看涨)")
+        elif liq_short > liq_long * 3:
+            score -= 2
+            signals.append("空头大量被清算(可能见顶)")
+        elif liq_short > liq_long * 1.5:
             score -= 1
-            signals.append("空头清算偏多(可能见顶)")
+            signals.append("空头清算偏多(偏看跌)")
 
-    # 4. EMA Trend
+    # 4. EMA Trend — add price-vs-EMA proximity signals
     ema_trend = tech.get("ema_trend", "neutral")
+    price = tech.get("price") or core.get("price", 0)
+    e21 = tech.get("ema_21")
+    e55 = tech.get("ema_55")
+    e200 = tech.get("ema_200")
     if ema_trend == "strong_bull":
-        score += 2
+        score += 3
         signals.append("EMA强多头排列")
     elif ema_trend == "bull":
-        score += 1
+        score += 2
         signals.append("EMA偏多")
     elif ema_trend == "strong_bear":
-        score -= 2
+        score -= 3
         signals.append("EMA强空头排列")
     elif ema_trend == "bear":
-        score -= 1
+        score -= 2
         signals.append("EMA偏空")
+    else:
+        # Neutral EMA — check if price is above/below key EMAs
+        if price and e200:
+            if price > e200:
+                score += 1
+                signals.append("价格在EMA200上方(长期偏多)")
+            else:
+                score -= 1
+                signals.append("价格在EMA200下方(长期偏空)")
 
-    # 5. RSI — more granular, consider position within range
+    # 5. RSI — tighter zones, divergence still highest weight
     rsi = tech.get("rsi")
     rsi_div = tech.get("rsi_divergence")
     if rsi_div == "bullish":
-        score += 2
+        score += 3
         signals.append("RSI看涨背离")
     elif rsi_div == "bearish":
-        score -= 2
+        score -= 3
         signals.append("RSI看跌背离")
-    elif rsi is not None:
+    if rsi is not None:
         if rsi > 75:
             score -= 2
             signals.append(f"RSI={rsi}超买")
-        elif rsi > 60:
+        elif rsi > 55:
             score -= 1
             signals.append(f"RSI={rsi}偏高")
         elif rsi < 25:
             score += 2
             signals.append(f"RSI={rsi}超卖")
-        elif rsi < 40:
+        elif rsi < 45:
             score += 1
             signals.append(f"RSI={rsi}偏低")
         else:
-            signals.append(f"RSI={rsi}中性")
+            signals.append(f"RSI={rsi}中性区间")
 
-    # 6. CVD
+    # 6. CVD — add magnitude awareness
     cvd_trend = adv.get("cvd_trend")
+    cvd_chg = adv.get("cvd_24h_change", 0)
     if cvd_trend == "accumulation":
         score += 1
         signals.append("CVD吸筹")
@@ -123,15 +152,20 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
         score -= 1
         signals.append("CVD派发")
 
-    # 7. Price vs POC — additional context signal
-    price = tech.get("price") or core.get("price", 0)
+    # 7. Price vs POC — lower threshold
     poc = adv.get("poc_price")
     if price and poc and poc > 0:
         deviation = (price - poc) / poc * 100
-        if deviation > 2:
+        if deviation > 3:
+            score += 2
+            signals.append(f"价格远在POC上方{deviation:.1f}%(强势)")
+        elif deviation > 1:
             score += 1
             signals.append("价格在POC上方(偏强)")
-        elif deviation < -2:
+        elif deviation < -3:
+            score -= 2
+            signals.append(f"价格远在POC下方{deviation:.1f}%(弱势)")
+        elif deviation < -1:
             score -= 1
             signals.append("价格在POC下方(偏弱)")
 
