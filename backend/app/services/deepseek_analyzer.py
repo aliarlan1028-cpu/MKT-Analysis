@@ -361,14 +361,17 @@ async def analyze_scanner_coin(coin: dict, category: str) -> dict | None:
 
         pumps = hist.get("big_pumps", [])
         if pumps:
-            ctx += f"大涨事件(>8%): {', '.join(f\"{p['date']}+{p['pct']}%\" for p in pumps)}\n"
+            pump_strs = ", ".join(p["date"] + "+" + str(p["pct"]) + "%" for p in pumps)
+            ctx += f"大涨事件(>8%): {pump_strs}\n"
         dumps = hist.get("big_dumps", [])
         if dumps:
-            ctx += f"大跌事件(>8%): {', '.join(f\"{d['date']}{d['pct']}%\" for d in dumps)}\n"
+            dump_strs = ", ".join(d["date"] + str(d["pct"]) + "%" for d in dumps)
+            ctx += f"大跌事件(>8%): {dump_strs}\n"
 
         pd_events = hist.get("pump_dump_events", [])
         if pd_events:
-            ctx += f"拉盘→砸盘: {'; '.join(f\"{e['pump_date']}+{e['pump_pct']}%→{e['dump_date']}{e['dump_pct']}%\" for e in pd_events)}\n"
+            pd_strs = "; ".join(e["pump_date"] + "+" + str(e["pump_pct"]) + "%→" + e["dump_date"] + str(e["dump_pct"]) + "%" for e in pd_events)
+            ctx += f"拉盘→砸盘: {pd_strs}\n"
 
         # NEW: Post-pump continuation stats
         pc = hist.get("pump_continuation", [])
