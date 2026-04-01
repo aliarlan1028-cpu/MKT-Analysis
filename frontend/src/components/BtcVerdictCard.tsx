@@ -22,10 +22,14 @@ const DIR_STYLES: Record<string, { bg: string; border: string; glow: string }> =
   neutral:  { bg: "bg-card-bg",         border: "border-card-border",     glow: "" },
 };
 
-export default function BtcVerdictCard() {
+interface Props {
+  selectedSymbol: string;
+  onSymbolChange: (ccy: string) => void;
+}
+
+export default function BtcVerdictCard({ selectedSymbol, onSymbolChange }: Props) {
   const [verdict, setVerdict] = useState<BtcVerdict | null>(null);
   const [ts, setTs] = useState<string>("");
-  const [selectedSymbol, setSelectedSymbol] = useState<string>("BTC");
   const [symbols, setSymbols] = useState<SymbolOption[]>([]);
   const [searchText, setSearchText] = useState<string>("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -83,7 +87,7 @@ export default function BtcVerdictCard() {
   );
 
   const handleSelect = (ccy: string) => {
-    setSelectedSymbol(ccy);
+    onSymbolChange(ccy);
     setShowDropdown(false);
     setSearchText("");
     setVerdict(null);

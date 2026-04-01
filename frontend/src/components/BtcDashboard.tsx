@@ -18,7 +18,11 @@ function fmtUsd(n: number | null | undefined): string {
 }
 
 
-export default function BtcDashboard() {
+interface Props {
+  symbol?: string;
+}
+
+export default function BtcDashboard({ symbol = "BTC" }: Props) {
   const [data, setData] = useState<BtcDerivativesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
@@ -26,7 +30,7 @@ export default function BtcDashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`${API}/btc-derivatives`);
+        const res = await fetch(`${API}/derivatives/${symbol}`);
         if (res.ok) setData(await res.json());
       } catch { /* ignore */ }
       finally { setLoading(false); }
@@ -34,9 +38,9 @@ export default function BtcDashboard() {
     load();
     const iv = setInterval(load, 60000);
     return () => clearInterval(iv);
-  }, []);
+  }, [symbol]);
 
-  if (loading) return <div className="text-text-muted text-sm py-4">BTC 衍生品数据加载中...</div>;
+  if (loading) return <div className="text-text-muted text-sm py-4">{symbol} 衍生品数据加载中...</div>;
   if (!data) return null;
 
   const { core: c, technical: t, advanced: a } = data;
@@ -87,7 +91,7 @@ export default function BtcDashboard() {
                 <span className="text-xs text-text-muted" title="OI↑+价格↑=趋势确认；OI↓=平仓潮">ⓘ</span>
               </div>
               <div className="text-lg font-bold">{fmtUsd(c.oi_usd)}</div>
-              <p className="text-xs text-text-muted">{fmt(c.oi_coin)} BTC</p>
+              <p className="text-xs text-text-muted">{fmt(c.oi_coin)} {symbol}</p>
               {c.oi_change_pct != null && (
                 <p className={`text-xs font-mono mt-0.5 ${c.oi_change_pct >= 0 ? "text-accent-green" : "text-accent-red"}`}>
                   24h: {c.oi_change_pct >= 0 ? "+" : ""}{c.oi_change_pct}%

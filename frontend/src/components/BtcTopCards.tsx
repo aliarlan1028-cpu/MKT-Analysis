@@ -18,20 +18,24 @@ const TREND_LABELS: Record<string, { text: string; color: string }> = {
   strong_bear: { text: "强势空头 🔴🔴", color: "text-accent-red" },
 };
 
-export default function BtcTopCards() {
+interface Props {
+  symbol?: string;
+}
+
+export default function BtcTopCards({ symbol = "BTC" }: Props) {
   const [data, setData] = useState<BtcDerivativesData | null>(null);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`${API}/btc-derivatives`);
+        const res = await fetch(`${API}/derivatives/${symbol}`);
         if (res.ok) setData(await res.json());
       } catch { /* ignore */ }
     };
     load();
     const iv = setInterval(load, 60000);
     return () => clearInterval(iv);
-  }, []);
+  }, [symbol]);
 
   if (!data) return null;
 
@@ -45,7 +49,7 @@ export default function BtcTopCards() {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-lg font-bold">📐 EMA趋势</h3>
-            <span className="text-sm text-text-muted">BTC 4H</span>
+            <span className="text-sm text-text-muted">{symbol} 4H</span>
           </div>
           <span className={`text-xs px-2 py-1 rounded ${
             t.ema_trend?.includes("bull") ? "bg-accent-green/10 text-accent-green" :

@@ -28,6 +28,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"reports" | "pro">("reports");
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("BTC");
   const [analyzing, setAnalyzing] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -116,12 +117,12 @@ export default function Home() {
               <MarketCard key={m.symbol} data={m} />
             ))}
             <FearGreedGauge data={dashboard.fear_greed} />
-            <BtcTopCards />
+            <BtcTopCards symbol={selectedSymbol} />
           </div>
           {/* Row 2: AI Verdict (full width) */}
-          <BtcVerdictCard />
+          <BtcVerdictCard selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} />
           {/* Row 3: Collapsible BTC derivatives details */}
-          <BtcDashboard />
+          <BtcDashboard symbol={selectedSymbol} />
         </section>
       )}
 
