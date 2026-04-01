@@ -1,7 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { PumpScannerResult, PumpCandidate, ScannerPostmortems, ScannerPMRecord } from "@/lib/types";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
+interface SymbolOption {
+  instId: string;
+  ccy: string;
+  label: string;
+}
+
+interface CustomAnalysis {
+  symbol: string;
+  price: number;
+  change_pct_24h: number;
+  funding_rate: number | null;
+  rsi: number | null;
+  volume_ratio: number | null;
+  ema_deviation_pct: number;
+  pre_pump_score: number;
+  dump_risk_score: number;
+  category: string;
+  ai_analysis: Record<string, unknown> | null;
+}
 
 function scoreColor(score: number): string {
   if (score >= 70) return "text-accent-green";
@@ -266,7 +288,140 @@ function PostmortemSection({ pm }: { pm: ScannerPostmortems }) {
   );
 }
 
+function CustomAnalysisResult({ result }: { result: CustomAnalysis }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ai = result.ai_analysis as Record<string, any> | null;
+  const isPump = result.category === "pre_pump";
+  const fr = result.funding_rate != null ? (result.funding_rate * 100).toFixed(4) + "%" : "N/A";
+
+  return (
+    <div className="mt-4 border-t border-card-border pt-4">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-xs font-semibold">🎯 {result.symbol}/USDT 扫描分析</h4>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded ${isPump ? "bg-accent-green/10 text-accent-green" : "bg-accent-red/10 text-accent-red"}`}>
+            {isPump ? "潜力拉升" : "暴跌预警"}
+          </span>
+          <span className="text-xs text-text-muted">${result.price}</span>
+          <span className={`text-xs ${result.change_pct_24h >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+            {result.change_pct_24h >= 0 ? "+" : ""}{result.change_pct_24h.toFixed(2)}%
+          </span>
+        </div>
+      </div>
+
+      {/* Score bars */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <div>
+          <div className="text-[10px] text-accent-green mb-1">🚀 拉升评分: {result.pre_pump_score}</div>
+          {scoreBar(result.pre_pump_score, "bg-accent-green")}
+        </div>
+        <div>
+          <div className="text-[10px] text-accent-red mb-1">💣 暴跌评分: {result.dump_risk_score}</div>
+          {scoreBar(result.dump_risk_score, "bg-accent-red")}
+        </div>
+      </div>
+
+      {/* Technical indicators */}
+      <div className="grid grid-cols-4 gap-2 text-xs text-text-muted mb-3">
+        <div>
+          <span className="block text-[10px] opacity-60">资金费率</span>
+          <span>{fr}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] opacity-60">RSI</span>
+          <span>{result.rsi != null ? result.rsi.toFixed(1) : "N/A"}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] opacity-60">量比</span>
+          <span>{result.volume_ratio != null ? result.volume_ratio.toFixed(2) + "x" : "N/A"}</span>
+        </div>
+        <div>
+          <span className="block text-[10px] opacity-60">EMA偏离</span>
+          <span>{result.ema_deviation_pct.toFixed(1)}%</span>
+        </div>
+      </div>
+
+      {/* AI Analysis */}
+      {ai && typeof ai === "object" && "verdict" in ai && (
+        <div className="p-2 rounded-md border border-accent-blue/20 bg-accent-blue/5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold opacity-70">🤖 DeepSeek 分析</span>
+            <span className={`text-[10px] font-bold ${
+              ai.verdict === "看涨" ? "text-accent-green" :
+              ai.verdict === "看跌" ? "text-accent-red" : "text-accent-yellow"
+            }`}>
+              {String(ai.verdict)}
+              {ai.confidence != null && ` (${ai.confidence}%)`}
+            </span>
+          </div>
+          {ai.reasoning && <p className="text-[10px] text-text-muted leading-relaxed mb-1">{String(ai.reasoning)}</p>}
+          {ai.market_style && <p className="text-[10px] text-accent-yellow/80 mb-1">💡 做市风格: {String(ai.market_style)}</p>}
+          {ai.historical_pattern && <p className="text-[10px] text-purple-400/80 mb-1">📊 历史模式: {String(ai.historical_pattern)}</p>}
+          {ai.continuation_signal && <p className="text-[10px] text-orange-400/90 mb-1">🔥 持续信号: {String(ai.continuation_signal)}</p>}
+          {ai.suggestion && <p className="text-[10px] text-accent-blue/90 font-medium">📋 {String(ai.suggestion)}</p>}
+          {ai.risk_warning && <p className="text-[10px] text-accent-red/80 mt-1">⚠️ {String(ai.risk_warning)}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PumpScannerPanel({ data, postmortems }: { data: PumpScannerResult | null; postmortems: ScannerPostmortems | null }) {
+  const [symbols, setSymbols] = useState<SymbolOption[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [customResult, setCustomResult] = useState<CustomAnalysis | null>(null);
+  const [customError, setCustomError] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch symbols
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`${API}/derivatives/symbols`);
+        if (res.ok) setSymbols(await res.json());
+      } catch { /* ignore */ }
+    };
+    load();
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filteredSymbols = symbols.filter(s =>
+    s.ccy.toLowerCase().includes(searchText.toLowerCase()) ||
+    s.label.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const handleSelect = async (ccy: string) => {
+    setShowDropdown(false);
+    setSearchText("");
+    setAnalyzing(true);
+    setCustomError(null);
+    setCustomResult(null);
+    try {
+      const res = await fetch(`${API}/scanner/analyze/${ccy}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "分析失败" }));
+        throw new Error(err.detail || "分析失败");
+      }
+      setCustomResult(await res.json());
+    } catch (e) {
+      setCustomError(e instanceof Error ? e.message : "分析失败");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   if (!data || (data.pre_pump.length === 0 && data.dump_risk.length === 0)) {
     return (
       <div className="bg-card-bg border border-card-border rounded-xl p-6">
@@ -279,11 +434,59 @@ export default function PumpScannerPanel({ data, postmortems }: { data: PumpScan
   return (
     <div className="bg-card-bg border border-card-border rounded-xl p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold">🔍 Pump & Dump 扫描器</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">🔍 Pump & Dump 扫描器</h3>
+          {/* Symbol Selector */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="px-2 py-0.5 text-xs font-bold bg-accent-blue/20 text-accent-blue border border-accent-blue/30 rounded-md hover:bg-accent-blue/30 transition-colors"
+            >
+              🔎 自选分析 ▾
+            </button>
+            {showDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-56 bg-card-bg border border-card-border rounded-lg shadow-xl z-50 overflow-hidden">
+                <div className="p-2 border-b border-card-border">
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="搜索币对..."
+                    className="w-full px-2 py-1 text-xs bg-bg-primary border border-card-border rounded text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue"
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {filteredSymbols.map((s) => (
+                    <button
+                      key={s.instId}
+                      onClick={() => handleSelect(s.ccy)}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent-blue/10 transition-colors text-text-primary"
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                  {filteredSymbols.length === 0 && (
+                    <p className="text-text-muted text-xs text-center py-3">无匹配结果</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          {analyzing && <span className="text-[10px] text-accent-blue animate-pulse">分析中...</span>}
+        </div>
         <span className="text-xs text-text-muted">
           已扫描 {data.total_scanned} 个合约 · Top 3
         </span>
       </div>
+
+      {/* Custom Analysis Result */}
+      {customResult && <CustomAnalysisResult result={customResult} />}
+      {customError && (
+        <div className="mb-4 p-2 rounded-md border border-accent-red/20 bg-accent-red/5 text-accent-red text-xs">
+          ⚠️ {customError}
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-4">
         {/* Pre-Pump Column */}

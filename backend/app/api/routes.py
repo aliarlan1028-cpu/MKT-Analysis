@@ -15,7 +15,7 @@ from app.services.whale_alert import get_whale_alerts
 from app.services.liquidation import get_liquidation_map, get_all_liquidation_maps
 from app.services.correlation import get_correlation_matrix
 from app.services.price_spike import get_spike_alerts
-from app.services.pump_scanner import scan_all_coins, get_scanner_postmortems
+from app.services.pump_scanner import scan_all_coins, get_scanner_postmortems, analyze_custom_coin
 from app.services.btc_derivatives import get_btc_derivatives, get_derivatives, get_okx_perpetual_symbols
 
 router = APIRouter()
@@ -161,6 +161,18 @@ async def pump_scanner():
 async def scanner_postmortems(limit: int = 30):
     """Get scanner postmortem stats and recent evaluation results."""
     return get_scanner_postmortems(limit=limit)
+
+
+@router.get("/scanner/analyze/{symbol}")
+async def scanner_analyze_coin(symbol: str):
+    """Analyze any OKX perpetual symbol using scanner DeepSeek logic."""
+    try:
+        result = await analyze_custom_coin(symbol)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
 
 
 # ── Derivatives Dashboard (Universal) ──

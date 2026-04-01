@@ -683,6 +683,86 @@ def _get_scanner_db():
     return conn
 
 
+async def analyze_custom_coin(symbol: str) -> dict:
+    """Analyze any OKX perpetual contract using the same DeepSeek scanner logic.
+
+    Fetches ticker, OI, and 4H klines for the given symbol,
+    builds a candidate dict, enriches it, scores it, then sends to DeepSeek.
+    """
+    inst_id = f"{symbol.upper()}-USDT-SWAP"
+
+    # 1. Fetch ticker
+    body = await _okx_get("/api/v5/market/ticker", {"instId": inst_id})
+    if not body or not body.get("data") or len(body["data"]) == 0:
+        raise ValueError(f"无法获取 {inst_id} 的行情数据")
+
+    ticker = body["data"][0]
+    last = float(ticker.get("last", 0))
+    if last == 0:
+        raise ValueError(f"{inst_id} 价格为0")
+
+    open24h = float(ticker.get("open24h", 0))
+    change_pct = ((last - open24h) / open24h * 100) if open24h > 0 else 0
+
+    # 2. Fetch OI
+    oi_body = await _okx_get("/api/v5/public/open-interest", {"instType": "SWAP", "instId": inst_id})
+    oi = 0.0
+    if oi_body and oi_body.get("data"):
+        oi = float(oi_body["data"][0].get("oiCcy", 0))
+
+    # 3. Build candidate dict (same structure as _analyze_coin)
+    candidate = {
+        "inst_id": inst_id,
+        "coin": symbol.upper(),
+        "price": last,
+        "change_pct_24h": round(change_pct, 2),
+        "volume_24h": float(ticker.get("volCcy24h", 0)),
+        "high_24h": float(ticker.get("high24h", 0)),
+        "low_24h": float(ticker.get("low24h", 0)),
+        "open_interest": oi,
+    }
+
+    # 4. Enrich with klines + funding (same as scanner pipeline)
+    candidate = await _enrich_with_klines(candidate)
+
+    # 5. Score both directions
+    candidate["pre_pump_score"] = _score_pre_pump(candidate)
+    candidate["dump_risk_score"] = _score_dump_risk(candidate)
+
+    # Determine which category to analyze
+    pp = candidate["pre_pump_score"]
+    dr = candidate["dump_risk_score"]
+    if pp >= dr:
+        category = "pre_pump"
+        candidate["score"] = pp
+    else:
+        category = "dump_risk"
+        candidate["score"] = dr
+
+    # 6. Call DeepSeek analysis (same function used by scanner)
+    from app.services.deepseek_analyzer import analyze_scanner_coin
+    ai_result = await analyze_scanner_coin(candidate, category)
+
+    return {
+        "symbol": symbol.upper(),
+        "inst_id": inst_id,
+        "price": last,
+        "change_pct_24h": round(change_pct, 2),
+        "volume_24h": candidate.get("volume_24h", 0),
+        "funding_rate": candidate.get("funding_rate"),
+        "rsi": candidate.get("rsi"),
+        "bb_width": candidate.get("bb_width"),
+        "volume_ratio": candidate.get("volume_ratio"),
+        "ema_deviation_pct": candidate.get("ema_deviation_pct", 0),
+        "consecutive_up_days": candidate.get("consecutive_up_days", 0),
+        "cumulative_return_7d": candidate.get("cumulative_return_7d", 0),
+        "pre_pump_score": pp,
+        "dump_risk_score": dr,
+        "category": category,
+        "ai_analysis": ai_result,
+    }
+
+
 def init_scanner_tables():
     """Create scanner postmortem tables."""
     conn = _get_scanner_db()
