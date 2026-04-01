@@ -8,6 +8,7 @@ from app.models.schemas import AnalysisReport
 from app.services.market_data import get_market_data_binance, fetch_cmc_batch, fetch_fear_greed
 from app.services.technical import calculate_indicators, empty_indicators
 from app.services.gemini_analyzer import analyze_symbol
+from app.services.deepseek_analyzer import analyze_symbol_deepseek
 
 
 async def generate_report_for_symbol(symbol: str) -> AnalysisReport | None:
@@ -37,9 +38,27 @@ async def generate_report_for_symbol(symbol: str) -> AnalysisReport | None:
         fear_greed = await fetch_fear_greed()
         print(f"  ✓ Fear & Greed: {fear_greed.value} ({fear_greed.label})")
 
-        # 4. Run Gemini AI analysis with Search Grounding
-        report = await analyze_symbol(market, indicators, fear_greed)
-        print(f"  ✓ AI Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
+        # 4. Run Gemini AI analysis (primary) → DeepSeek fallback on 429
+        report = None
+        try:
+            report = await analyze_symbol(market, indicators, fear_greed)
+            print(f"  ✓ Gemini Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
+        except Exception as gemini_err:
+            err_str = str(gemini_err)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                print(f"  ⚠ Gemini 额度用完 (429), 降级到 DeepSeek...")
+                try:
+                    report = await analyze_symbol_deepseek(market, indicators, fear_greed)
+                    print(f"  ✓ DeepSeek Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
+                except Exception as ds_err:
+                    print(f"  ✗ DeepSeek also failed: {ds_err}")
+                    traceback.print_exc()
+                    return None
+            else:
+                raise  # re-raise non-429 errors
+
+        if not report:
+            return None
 
         # 5. Save to database
         save_report(report)

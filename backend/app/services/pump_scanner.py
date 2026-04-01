@@ -568,6 +568,30 @@ async def scan_all_coins() -> dict:
     pre_pump_fmt = [_fmt(c, "pre_pump_score", is_pump=True) for c in pre_pump]
     dump_risk_fmt = [_fmt(c, "dump_risk_score", is_pump=False) for c in dump_risk]
 
+    # Step 7: DeepSeek AI analysis for top candidates
+    if pre_pump_fmt or dump_risk_fmt:
+        try:
+            from app.services.deepseek_analyzer import analyze_scanner_batch
+            print("  🤖 DeepSeek: analyzing scanner candidates...")
+
+            pp_coro = analyze_scanner_batch(pre_pump_fmt, "pre_pump") if pre_pump_fmt else asyncio.sleep(0)
+            dr_coro = analyze_scanner_batch(dump_risk_fmt, "dump_risk") if dump_risk_fmt else asyncio.sleep(0)
+            pp_ai, dr_ai = await asyncio.gather(pp_coro, dr_coro)
+
+            if isinstance(pp_ai, list):
+                for i, ai in enumerate(pp_ai):
+                    if ai and i < len(pre_pump_fmt):
+                        pre_pump_fmt[i]["ai_analysis"] = ai
+
+            if isinstance(dr_ai, list):
+                for i, ai in enumerate(dr_ai):
+                    if ai and i < len(dump_risk_fmt):
+                        dump_risk_fmt[i]["ai_analysis"] = ai
+
+            print("  ✓ DeepSeek analysis complete")
+        except Exception as ds_err:
+            print(f"  ⚠ DeepSeek scanner analysis failed: {ds_err}")
+
     now = datetime.now(timezone.utc)
     result = {
         "pre_pump": pre_pump_fmt,

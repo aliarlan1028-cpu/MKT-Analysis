@@ -26,8 +26,10 @@ class Settings:
     OKX_API_SECRET: str = os.getenv("OKX_API_SECRET", "")
     OKX_API_PASSPHRASE: str = os.getenv("OKX_API_PASSPHRASE", "")
 
-    # Claude (Anthropic)
-    CLAUDE_API_KEY: str = os.getenv("CLAUDE_API_KEY", "")
+    # DeepSeek
+    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
 
     # CoinMarketCap (fallback data source)
     CMC_API_KEY: str = os.getenv("CMC_API_KEY", "")

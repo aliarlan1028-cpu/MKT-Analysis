@@ -114,6 +114,40 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
         </div>
       )}
 
+      {/* DeepSeek AI Analysis */}
+      {c.ai_analysis && typeof c.ai_analysis === "object" && "verdict" in c.ai_analysis && (
+        <div className="mt-2 p-2 rounded-md border border-accent-blue/20 bg-accent-blue/5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-semibold opacity-70">🤖 DeepSeek 分析</span>
+            <span className={`text-[10px] font-bold ${
+              c.ai_analysis.verdict === "看涨" ? "text-accent-green" :
+              c.ai_analysis.verdict === "看跌" ? "text-accent-red" : "text-accent-yellow"
+            }`}>
+              {c.ai_analysis.verdict}
+              {c.ai_analysis.confidence != null && ` (${c.ai_analysis.confidence}%)`}
+            </span>
+          </div>
+          {c.ai_analysis.reasoning && (
+            <p className="text-[10px] text-text-muted leading-relaxed mb-1">{c.ai_analysis.reasoning}</p>
+          )}
+          {c.ai_analysis.market_style && (
+            <p className="text-[10px] text-accent-yellow/80 mb-1">💡 {c.ai_analysis.market_style}</p>
+          )}
+          {c.ai_analysis.suggestion && (
+            <p className="text-[10px] text-accent-blue/90 font-medium">📋 {c.ai_analysis.suggestion}</p>
+          )}
+          {c.ai_analysis.risk_warning && (
+            <p className="text-[10px] text-accent-red/80 mt-1">⚠️ {c.ai_analysis.risk_warning}</p>
+          )}
+        </div>
+      )}
+      {c.ai_analysis && typeof c.ai_analysis === "string" && (
+        <div className="mt-2 p-2 rounded-md border border-accent-blue/20 bg-accent-blue/5">
+          <span className="text-[10px] font-semibold opacity-70">🤖 DeepSeek: </span>
+          <span className="text-[10px] text-text-muted">{c.ai_analysis}</span>
+        </div>
+      )}
+
     </div>
   );
 }

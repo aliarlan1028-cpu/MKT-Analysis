@@ -220,12 +220,20 @@ export interface MultiTimeframe {
 
 // ── Pump & Dump Scanner ──
 export interface AiTradeSignal {
-  action: string;        // "做多" | "做空" | "观望"
-  confidence: string;    // "high" | "medium" | "low"
-  entry_price: string;   // e.g. "$0.00001050"
-  stop_loss: string;     // e.g. "$0.00001000"
-  take_profit: string;   // e.g. "$0.00001200"
-  reasoning: string;     // 40-80 chars analysis with news/factors
+  action?: string;        // "做多" | "做空" | "观望"
+  confidence?: string | number;    // "high" | "medium" | "low" or 0-100
+  entry_price?: string;   // e.g. "$0.00001050"
+  stop_loss?: string;     // e.g. "$0.00001000"
+  take_profit?: string;   // e.g. "$0.00001200"
+  reasoning?: string;     // 40-80 chars analysis with news/factors
+  // DeepSeek scanner analysis fields
+  verdict?: string;       // "看涨" | "看跌" | "观望"
+  market_style?: string;  // 做市风格描述
+  suggestion?: string;    // 交易建议
+  risk_warning?: string;  // 风险提示
+  key_support?: number[];
+  key_resistance?: number[];
+  source?: string;        // "deepseek"
 }
 
 export interface PumpCandidate {
