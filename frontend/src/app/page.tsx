@@ -221,7 +221,7 @@ export default function Home() {
           </div>
 
           {/* Row 3: Pump & Dump Scanner */}
-          <PumpScannerPanel data={proDash.pump_scanner || null} />
+          <PumpScannerPanel data={proDash.pump_scanner || null} postmortems={proDash.scanner_postmortems || null} />
 
           {/* Row 4: Correlation Matrix */}
           <CorrelationPanel data={proDash.correlation} />

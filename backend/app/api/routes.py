@@ -204,6 +204,7 @@ async def professional_dashboard():
         "pump_scanner": scanner if not isinstance(scanner, Exception) else {"pre_pump": [], "dump_risk": [], "total_scanned": 0},
         "postmortems": get_postmortems(limit=10),
         "win_rate": get_win_rate(),
+        "scanner_postmortems": get_scanner_postmortems(limit=20),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

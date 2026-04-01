@@ -339,6 +339,59 @@ export interface BtcDerivativesData {
   timestamp: string;
 }
 
+// ── Scanner Post-Mortem ──
+export interface ScannerPMRecord {
+  coin: string;
+  category: string;
+  price_at_scan: number;
+  price_after_24h: number | null;
+  change_after_24h: number | null;
+  score: number;
+  result: string;
+  scanned_at: string;
+  evaluated_at: string | null;
+  ai_verdict: string | null;
+  ai_confidence: number | null;
+  ai_result: string | null;
+}
+
+export interface ScannerCategoryStats {
+  total: number;
+  wins: number;
+  partial_wins: number;
+  losses: number;
+  win_rate: number;
+  avg_change_24h: number;
+}
+
+export interface ScannerAIVerdictStats {
+  total: number;
+  wins: number;
+  win_rate: number;
+}
+
+export interface ScannerAIStats {
+  total: number;
+  wins: number;
+  losses: number;
+  neutrals: number;
+  win_rate: number;
+  by_verdict: {
+    "看涨": ScannerAIVerdictStats;
+    "看跌": ScannerAIVerdictStats;
+    "观望": ScannerAIVerdictStats;
+  };
+}
+
+export interface ScannerPostmortems {
+  records: ScannerPMRecord[];
+  stats: {
+    pre_pump: ScannerCategoryStats;
+    dump_risk: ScannerCategoryStats;
+  };
+  ai_stats: ScannerAIStats;
+}
+
 // ── Professional Dashboard ──
 export interface ProfessionalDashboard {
   price_spikes: PriceSpikeAlert[];
@@ -348,6 +401,7 @@ export interface ProfessionalDashboard {
   pump_scanner: PumpScannerResult | null;
   postmortems: PostMortem[];
   win_rate: WinRateStats;
+  scanner_postmortems: ScannerPostmortems | null;
   timestamp: string;
 }
 

@@ -703,13 +703,37 @@ def init_scanner_tables():
             change_after_24h REAL,
             change_after_48h REAL,
             result TEXT DEFAULT 'PENDING',
-            evaluated_at TEXT
+            evaluated_at TEXT,
+            ai_verdict TEXT,
+            ai_confidence INTEGER,
+            ai_result TEXT DEFAULT 'PENDING'
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ss_coin ON scanner_snapshots(coin, scanned_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ss_pending ON scanner_snapshots(result, scanned_at)")
     conn.commit()
+
+    # Migrate: add AI columns if missing
+    try:
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(scanner_snapshots)").fetchall()]
+        if "ai_verdict" not in cols:
+            conn.execute("ALTER TABLE scanner_snapshots ADD COLUMN ai_verdict TEXT")
+        if "ai_confidence" not in cols:
+            conn.execute("ALTER TABLE scanner_snapshots ADD COLUMN ai_confidence INTEGER")
+        if "ai_result" not in cols:
+            conn.execute("ALTER TABLE scanner_snapshots ADD COLUMN ai_result TEXT DEFAULT 'PENDING'")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
+
+
+def _extract_ai_fields(c: dict) -> tuple:
+    """Extract AI verdict and confidence from a candidate's ai_analysis."""
+    ai = c.get("ai_analysis")
+    if ai and isinstance(ai, dict):
+        return ai.get("verdict"), ai.get("confidence")
+    return None, None
 
 
 def _save_scan_snapshot(pre_pump: list[dict], dump_risk: list[dict], timestamp: datetime):
@@ -732,13 +756,14 @@ def _save_scan_snapshot(pre_pump: list[dict], dump_risk: list[dict], timestamp: 
                 (c["coin"], one_hour_ago)
             ).fetchone()
             if not existing:
+                ai_verdict, ai_confidence = _extract_ai_fields(c)
                 conn.execute(
                     """INSERT INTO scanner_snapshots
-                       (coin, category, price_at_scan, score, change_pct_24h, funding_rate, rsi, cumulative_return_7d, scanned_at)
-                       VALUES (?, 'pre_pump', ?, ?, ?, ?, ?, ?, ?)""",
+                       (coin, category, price_at_scan, score, change_pct_24h, funding_rate, rsi, cumulative_return_7d, scanned_at, ai_verdict, ai_confidence)
+                       VALUES (?, 'pre_pump', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (c["coin"], c["price"], c["score"], c.get("change_pct_24h"),
                      c.get("funding_rate"), c.get("rsi"), c.get("cumulative_return_7d", 0),
-                     timestamp.isoformat())
+                     timestamp.isoformat(), ai_verdict, ai_confidence)
                 )
 
         for c in dump_risk[:5]:
@@ -747,19 +772,77 @@ def _save_scan_snapshot(pre_pump: list[dict], dump_risk: list[dict], timestamp: 
                 (c["coin"], one_hour_ago)
             ).fetchone()
             if not existing:
+                ai_verdict, ai_confidence = _extract_ai_fields(c)
                 conn.execute(
                     """INSERT INTO scanner_snapshots
-                       (coin, category, price_at_scan, score, change_pct_24h, funding_rate, rsi, cumulative_return_7d, scanned_at)
-                       VALUES (?, 'dump_risk', ?, ?, ?, ?, ?, ?, ?)""",
+                       (coin, category, price_at_scan, score, change_pct_24h, funding_rate, rsi, cumulative_return_7d, scanned_at, ai_verdict, ai_confidence)
+                       VALUES (?, 'dump_risk', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (c["coin"], c["price"], c["score"], c.get("change_pct_24h"),
                      c.get("funding_rate"), c.get("rsi"), c.get("cumulative_return_7d", 0),
-                     timestamp.isoformat())
+                     timestamp.isoformat(), ai_verdict, ai_confidence)
                 )
 
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"  ⚠ Failed to save scan snapshot: {e}")
+
+
+def _evaluate_code_signal(category: str, change_pct: float) -> str:
+    """Evaluate the code-generated signal result based on price change."""
+    if category == "pre_pump":
+        if change_pct >= 10:
+            return "STRONG_WIN"
+        elif change_pct >= 5:
+            return "WIN"
+        elif change_pct >= 2:
+            return "PARTIAL_WIN"
+        elif change_pct > -3:
+            return "NEUTRAL"
+        else:
+            return "LOSS"
+    else:  # dump_risk
+        if change_pct <= -10:
+            return "STRONG_WIN"
+        elif change_pct <= -5:
+            return "WIN"
+        elif change_pct <= -2:
+            return "PARTIAL_WIN"
+        elif change_pct < 3:
+            return "NEUTRAL"
+        else:
+            return "LOSS"
+
+
+def _evaluate_ai_verdict(ai_verdict: str | None, change_pct: float) -> str:
+    """Evaluate whether DeepSeek's verdict was correct."""
+    if not ai_verdict:
+        return "NO_AI"
+
+    verdict = ai_verdict.strip()
+    if verdict == "看涨":
+        if change_pct >= 5:
+            return "STRONG_WIN"
+        elif change_pct >= 2:
+            return "WIN"
+        elif change_pct > -2:
+            return "NEUTRAL"
+        else:
+            return "LOSS"
+    elif verdict == "看跌":
+        if change_pct <= -5:
+            return "STRONG_WIN"
+        elif change_pct <= -2:
+            return "WIN"
+        elif change_pct < 2:
+            return "NEUTRAL"
+        else:
+            return "LOSS"
+    else:  # 观望
+        if -3 <= change_pct <= 3:
+            return "WIN"
+        else:
+            return "NEUTRAL"
 
 
 async def evaluate_scanner_postmortems():
@@ -803,39 +886,20 @@ async def evaluate_scanner_postmortems():
 
             change_pct = round((current_price - price_at_scan) / price_at_scan * 100, 2)
 
-            # Determine result
-            if category == "pre_pump":
-                # Pre-pump prediction: coin should go UP
-                if change_pct >= 10:
-                    result = "STRONG_WIN"
-                elif change_pct >= 5:
-                    result = "WIN"
-                elif change_pct >= 2:
-                    result = "PARTIAL_WIN"
-                elif change_pct > -3:
-                    result = "NEUTRAL"
-                else:
-                    result = "LOSS"
-            else:
-                # Dump-risk prediction: coin should go DOWN (or at least stop rising)
-                if change_pct <= -10:
-                    result = "STRONG_WIN"
-                elif change_pct <= -5:
-                    result = "WIN"
-                elif change_pct <= -2:
-                    result = "PARTIAL_WIN"
-                elif change_pct < 3:
-                    result = "NEUTRAL"
-                else:
-                    result = "LOSS"
+            # Evaluate code signal
+            result = _evaluate_code_signal(category, change_pct)
+
+            # Evaluate AI verdict
+            ai_verdict = row["ai_verdict"] if "ai_verdict" in row.keys() else None
+            ai_result = _evaluate_ai_verdict(ai_verdict, change_pct)
 
             now = datetime.now(timezone.utc)
             conn2 = _get_scanner_db()
             conn2.execute(
                 """UPDATE scanner_snapshots
-                   SET price_after_24h=?, change_after_24h=?, result=?, evaluated_at=?
+                   SET price_after_24h=?, change_after_24h=?, result=?, ai_result=?, evaluated_at=?
                    WHERE id=?""",
-                (current_price, change_pct, result, now.isoformat(), row["id"])
+                (current_price, change_pct, result, ai_result, now.isoformat(), row["id"])
             )
             conn2.commit()
             conn2.close()
@@ -848,14 +912,87 @@ async def evaluate_scanner_postmortems():
                 "change_pct": change_pct,
                 "score": row["score"],
                 "result": result,
+                "ai_verdict": ai_verdict,
+                "ai_result": ai_result,
                 "scanned_at": row["scanned_at"],
             })
-            print(f"  📊 Scanner PM: {coin} ({category}) → {result} ({change_pct:+.2f}%)")
+            ai_tag = f" | AI({ai_verdict})→{ai_result}" if ai_verdict else ""
+            print(f"  📊 Scanner PM: {coin} ({category}) → {result} ({change_pct:+.2f}%){ai_tag}")
 
         return evaluated
     except Exception as e:
         print(f"  ⚠ Scanner postmortem evaluation failed: {e}")
         return []
+
+
+def _calc_category_stats(conn, cat: str) -> dict:
+    """Calculate code signal stats for a category."""
+    cat_rows = conn.execute(
+        """SELECT result, COUNT(*) as cnt FROM scanner_snapshots
+           WHERE category=? AND result != 'PENDING'
+           GROUP BY result""",
+        (cat,)
+    ).fetchall()
+
+    total = sum(r["cnt"] for r in cat_rows)
+    wins = sum(r["cnt"] for r in cat_rows if r["result"] in ("WIN", "STRONG_WIN"))
+    partial = sum(r["cnt"] for r in cat_rows if r["result"] == "PARTIAL_WIN")
+    losses = sum(r["cnt"] for r in cat_rows if r["result"] == "LOSS")
+
+    avg_change_row = conn.execute(
+        "SELECT AVG(change_after_24h) as avg_chg FROM scanner_snapshots WHERE category=? AND result != 'PENDING'",
+        (cat,)
+    ).fetchone()
+    avg_change = round(avg_change_row["avg_chg"], 2) if avg_change_row and avg_change_row["avg_chg"] is not None else 0
+
+    return {
+        "total": total,
+        "wins": wins,
+        "partial_wins": partial,
+        "losses": losses,
+        "win_rate": round(wins / total * 100, 1) if total > 0 else 0,
+        "avg_change_24h": avg_change,
+    }
+
+
+def _calc_ai_stats(conn) -> dict:
+    """Calculate DeepSeek AI verdict accuracy stats."""
+    ai_rows = conn.execute(
+        """SELECT ai_result, COUNT(*) as cnt FROM scanner_snapshots
+           WHERE ai_verdict IS NOT NULL AND ai_result IS NOT NULL AND ai_result != 'PENDING' AND ai_result != 'NO_AI'
+           GROUP BY ai_result"""
+    ).fetchall()
+
+    total = sum(r["cnt"] for r in ai_rows)
+    wins = sum(r["cnt"] for r in ai_rows if r["ai_result"] in ("WIN", "STRONG_WIN"))
+    losses = sum(r["cnt"] for r in ai_rows if r["ai_result"] == "LOSS")
+    neutrals = sum(r["cnt"] for r in ai_rows if r["ai_result"] == "NEUTRAL")
+
+    # Breakdown by verdict type
+    verdict_stats = {}
+    for verdict in ["看涨", "看跌", "观望"]:
+        v_rows = conn.execute(
+            """SELECT ai_result, COUNT(*) as cnt FROM scanner_snapshots
+               WHERE ai_verdict=? AND ai_result IS NOT NULL AND ai_result != 'PENDING' AND ai_result != 'NO_AI'
+               GROUP BY ai_result""",
+            (verdict,)
+        ).fetchall()
+        v_total = sum(r["cnt"] for r in v_rows)
+        v_wins = sum(r["cnt"] for r in v_rows if r["ai_result"] in ("WIN", "STRONG_WIN"))
+        verdict_stats[verdict] = {
+            "total": v_total,
+            "wins": v_wins,
+            "win_rate": round(v_wins / v_total * 100, 1) if v_total > 0 else 0,
+        }
+
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "neutrals": neutrals,
+        "win_rate": round(wins / total * 100, 1) if total > 0 else 0,
+        "by_verdict": verdict_stats,
+    }
 
 
 def get_scanner_postmortems(limit: int = 30) -> dict:
@@ -865,7 +1002,7 @@ def get_scanner_postmortems(limit: int = 30) -> dict:
         tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scanner_snapshots'").fetchall()
         if not tables:
             conn.close()
-            return {"records": [], "stats": _empty_stats()}
+            return {"records": [], "stats": _empty_stats(), "ai_stats": _empty_ai_stats()}
 
         # Recent evaluated records
         rows = conn.execute(
@@ -873,41 +1010,19 @@ def get_scanner_postmortems(limit: int = 30) -> dict:
             (limit,)
         ).fetchall()
 
-        # Stats by category
+        # Code signal stats by category
         stats = {}
         for cat in ["pre_pump", "dump_risk"]:
-            cat_rows = conn.execute(
-                """SELECT result, COUNT(*) as cnt FROM scanner_snapshots
-                   WHERE category=? AND result != 'PENDING'
-                   GROUP BY result""",
-                (cat,)
-            ).fetchall()
+            stats[cat] = _calc_category_stats(conn, cat)
 
-            total = sum(r["cnt"] for r in cat_rows)
-            wins = sum(r["cnt"] for r in cat_rows if r["result"] in ("WIN", "STRONG_WIN"))
-            partial = sum(r["cnt"] for r in cat_rows if r["result"] == "PARTIAL_WIN")
-            losses = sum(r["cnt"] for r in cat_rows if r["result"] == "LOSS")
-
-            avg_change_row = conn.execute(
-                "SELECT AVG(change_after_24h) as avg_chg FROM scanner_snapshots WHERE category=? AND result != 'PENDING'",
-                (cat,)
-            ).fetchone()
-            avg_change = round(avg_change_row["avg_chg"], 2) if avg_change_row and avg_change_row["avg_chg"] is not None else 0
-
-            stats[cat] = {
-                "total": total,
-                "wins": wins,
-                "partial_wins": partial,
-                "losses": losses,
-                "win_rate": round(wins / total * 100, 1) if total > 0 else 0,
-                "avg_change_24h": avg_change,
-            }
+        # AI verdict stats
+        ai_stats = _calc_ai_stats(conn)
 
         conn.close()
 
         records = []
         for r in rows:
-            records.append({
+            rec = {
                 "coin": r["coin"],
                 "category": r["category"],
                 "price_at_scan": r["price_at_scan"],
@@ -917,16 +1032,37 @@ def get_scanner_postmortems(limit: int = 30) -> dict:
                 "result": r["result"],
                 "scanned_at": r["scanned_at"],
                 "evaluated_at": r["evaluated_at"],
-            })
+            }
+            # Include AI fields if present
+            try:
+                rec["ai_verdict"] = r["ai_verdict"]
+                rec["ai_confidence"] = r["ai_confidence"]
+                rec["ai_result"] = r["ai_result"]
+            except (IndexError, KeyError):
+                rec["ai_verdict"] = None
+                rec["ai_confidence"] = None
+                rec["ai_result"] = None
+            records.append(rec)
 
-        return {"records": records, "stats": stats}
+        return {"records": records, "stats": stats, "ai_stats": ai_stats}
     except Exception as e:
         print(f"  ⚠ Failed to get scanner postmortems: {e}")
-        return {"records": [], "stats": _empty_stats()}
+        return {"records": [], "stats": _empty_stats(), "ai_stats": _empty_ai_stats()}
 
 
 def _empty_stats() -> dict:
     return {
         "pre_pump": {"total": 0, "wins": 0, "partial_wins": 0, "losses": 0, "win_rate": 0, "avg_change_24h": 0},
         "dump_risk": {"total": 0, "wins": 0, "partial_wins": 0, "losses": 0, "win_rate": 0, "avg_change_24h": 0},
+    }
+
+
+def _empty_ai_stats() -> dict:
+    return {
+        "total": 0, "wins": 0, "losses": 0, "neutrals": 0, "win_rate": 0,
+        "by_verdict": {
+            "看涨": {"total": 0, "wins": 0, "win_rate": 0},
+            "看跌": {"total": 0, "wins": 0, "win_rate": 0},
+            "观望": {"total": 0, "wins": 0, "win_rate": 0},
+        },
     }

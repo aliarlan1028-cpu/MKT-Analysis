@@ -1,6 +1,7 @@
 "use client";
 
-import type { PumpScannerResult, PumpCandidate } from "@/lib/types";
+import { useState } from "react";
+import type { PumpScannerResult, PumpCandidate, ScannerPostmortems, ScannerPMRecord } from "@/lib/types";
 
 function scoreColor(score: number): string {
   if (score >= 70) return "text-accent-green";
@@ -131,7 +132,141 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
   );
 }
 
-export default function PumpScannerPanel({ data }: { data: PumpScannerResult | null }) {
+const resultColors: Record<string, string> = {
+  STRONG_WIN: "text-accent-green",
+  WIN: "text-accent-green",
+  PARTIAL_WIN: "text-accent-yellow",
+  NEUTRAL: "text-text-muted",
+  LOSS: "text-accent-red",
+  NO_AI: "text-text-muted",
+};
+
+const resultIcons: Record<string, string> = {
+  STRONG_WIN: "🎯",
+  WIN: "✅",
+  PARTIAL_WIN: "⚡",
+  NEUTRAL: "➖",
+  LOSS: "❌",
+  NO_AI: "—",
+};
+
+function PMRecord({ r }: { r: ScannerPMRecord }) {
+  const isPump = r.category === "pre_pump";
+  const changePct = r.change_after_24h ?? 0;
+  return (
+    <div className="flex items-center justify-between text-xs py-1.5 border-b border-card-border/50 last:border-0">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={`text-[10px] px-1 rounded ${isPump ? "bg-accent-green/10 text-accent-green" : "bg-accent-red/10 text-accent-red"}`}>
+          {isPump ? "拉升" : "暴跌"}
+        </span>
+        <span className="font-medium">{r.coin}</span>
+        <span className="text-text-muted text-[10px]">{r.score}分</span>
+      </div>
+      <div className="flex items-center gap-3">
+        {/* Code signal result */}
+        <span className={resultColors[r.result]}>
+          {resultIcons[r.result]} {changePct >= 0 ? "+" : ""}{changePct.toFixed(2)}%
+        </span>
+        {/* AI verdict result */}
+        {r.ai_verdict && r.ai_result && r.ai_result !== "NO_AI" && (
+          <span className={`text-[10px] ${resultColors[r.ai_result]}`}>
+            AI({r.ai_verdict}){resultIcons[r.ai_result]}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PostmortemSection({ pm }: { pm: ScannerPostmortems }) {
+  const [showRecords, setShowRecords] = useState(false);
+  const ppStats = pm.stats.pre_pump;
+  const drStats = pm.stats.dump_risk;
+  const ai = pm.ai_stats;
+
+  return (
+    <div className="mt-4 border-t border-card-border pt-4">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-xs font-semibold">📊 信号复盘 (24h后评估)</h4>
+        {pm.records.length > 0 && (
+          <button
+            onClick={() => setShowRecords(!showRecords)}
+            className="text-[10px] text-accent-blue hover:underline"
+          >
+            {showRecords ? "收起记录" : `查看记录 (${pm.records.length})`}
+          </button>
+        )}
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        {/* Pre-pump stats */}
+        <div className="bg-bg-primary rounded-lg p-2 text-center">
+          <div className="text-[10px] text-accent-green mb-1">🚀 拉升榜胜率</div>
+          <div className="text-lg font-bold text-accent-green">{ppStats.win_rate}%</div>
+          <div className="text-[10px] text-text-muted">
+            {ppStats.wins}胜 {ppStats.losses}负 / {ppStats.total}总
+          </div>
+          {ppStats.total > 0 && (
+            <div className="text-[10px] text-text-muted">
+              平均24h: <span className={ppStats.avg_change_24h >= 0 ? "text-accent-green" : "text-accent-red"}>
+                {ppStats.avg_change_24h >= 0 ? "+" : ""}{ppStats.avg_change_24h}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Dump-risk stats */}
+        <div className="bg-bg-primary rounded-lg p-2 text-center">
+          <div className="text-[10px] text-accent-red mb-1">💣 暴跌榜胜率</div>
+          <div className="text-lg font-bold text-accent-red">{drStats.win_rate}%</div>
+          <div className="text-[10px] text-text-muted">
+            {drStats.wins}胜 {drStats.losses}负 / {drStats.total}总
+          </div>
+          {drStats.total > 0 && (
+            <div className="text-[10px] text-text-muted">
+              平均24h: <span className={drStats.avg_change_24h <= 0 ? "text-accent-green" : "text-accent-red"}>
+                {drStats.avg_change_24h >= 0 ? "+" : ""}{drStats.avg_change_24h}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* AI verdict stats */}
+        <div className="bg-bg-primary rounded-lg p-2 text-center">
+          <div className="text-[10px] text-accent-blue mb-1">🤖 AI研判胜率</div>
+          <div className="text-lg font-bold text-accent-blue">{ai.win_rate}%</div>
+          <div className="text-[10px] text-text-muted">
+            {ai.wins}胜 {ai.losses}负 / {ai.total}总
+          </div>
+          {ai.total > 0 && (
+            <div className="text-[10px] text-text-muted space-x-1">
+              <span className="text-accent-green">涨{ai.by_verdict["看涨"]?.win_rate ?? 0}%</span>
+              <span className="text-accent-red">跌{ai.by_verdict["看跌"]?.win_rate ?? 0}%</span>
+              <span>望{ai.by_verdict["观望"]?.win_rate ?? 0}%</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* No data hint */}
+      {ppStats.total === 0 && drStats.total === 0 && (
+        <p className="text-text-muted text-[10px] text-center py-2">暂无复盘数据，信号需等待24小时后自动评估</p>
+      )}
+
+      {/* Records list */}
+      {showRecords && pm.records.length > 0 && (
+        <div className="bg-bg-primary rounded-lg p-2 max-h-48 overflow-y-auto">
+          {pm.records.map((r, i) => (
+            <PMRecord key={`${r.coin}-${r.scanned_at}-${i}`} r={r} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function PumpScannerPanel({ data, postmortems }: { data: PumpScannerResult | null; postmortems: ScannerPostmortems | null }) {
   if (!data || (data.pre_pump.length === 0 && data.dump_risk.length === 0)) {
     return (
       <div className="bg-card-bg border border-card-border rounded-xl p-6">
@@ -181,6 +316,9 @@ export default function PumpScannerPanel({ data }: { data: PumpScannerResult | n
           </div>
         </div>
       </div>
+
+      {/* Scanner Postmortem Section */}
+      {postmortems && <PostmortemSection pm={postmortems} />}
     </div>
   );
 }
