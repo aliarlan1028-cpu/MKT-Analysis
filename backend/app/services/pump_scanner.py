@@ -19,6 +19,10 @@ from app.core.config import settings
 _scanner_cache: dict = {"result": None, "updated_at": None}
 CACHE_TTL_SECONDS = 90  # 1.5 minutes (scanner runs every 2 min)
 
+# ── DeepSeek analysis cache (separate from scanner cache) ──
+_ds_cache: dict = {"pre_pump": [], "dump_risk": [], "updated_at": None}
+DS_CACHE_TTL_SECONDS = 900  # 15 minutes
+
 # ── Database for postmortem ──
 _DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "data", "reports.db")
 
@@ -568,11 +572,26 @@ async def scan_all_coins() -> dict:
     pre_pump_fmt = [_fmt(c, "pre_pump_score", is_pump=True) for c in pre_pump]
     dump_risk_fmt = [_fmt(c, "dump_risk_score", is_pump=False) for c in dump_risk]
 
-    # Step 7: DeepSeek AI analysis for top candidates
+    # Step 7: DeepSeek AI analysis for top candidates (every 15 min)
+    _ds_fresh = False
     if pre_pump_fmt or dump_risk_fmt:
         from app.core.config import settings as _cfg
         if not _cfg.DEEPSEEK_API_KEY:
             print("  ⚠ DeepSeek API key not set, skipping scanner AI analysis")
+        elif (_ds_cache["updated_at"]
+              and (datetime.now(timezone.utc) - _ds_cache["updated_at"]).total_seconds() < DS_CACHE_TTL_SECONDS):
+            # Reuse cached DeepSeek results — match by coin name
+            _ds_pp_map = {a.get("coin"): a for a in _ds_cache["pre_pump"] if a}
+            _ds_dr_map = {a.get("coin"): a for a in _ds_cache["dump_risk"] if a}
+            for c in pre_pump_fmt:
+                cached = _ds_pp_map.get(c["coin"])
+                if cached:
+                    c["ai_analysis"] = cached
+            for c in dump_risk_fmt:
+                cached = _ds_dr_map.get(c["coin"])
+                if cached:
+                    c["ai_analysis"] = cached
+            print(f"  🤖 DeepSeek: using cached analysis (next refresh in {int(DS_CACHE_TTL_SECONDS - (datetime.now(timezone.utc) - _ds_cache['updated_at']).total_seconds())}s)")
         else:
             try:
                 from app.services.deepseek_analyzer import analyze_scanner_batch
@@ -596,7 +615,13 @@ async def scan_all_coins() -> dict:
                             dump_risk_fmt[i]["ai_analysis"] = ai
                             dr_count += 1
 
-                print(f"  ✓ DeepSeek analysis complete: {pp_count} pre-pump + {dr_count} dump-risk enriched")
+                # Update DeepSeek cache
+                _ds_cache["pre_pump"] = [{**c.get("ai_analysis", {}), "coin": c["coin"]} for c in pre_pump_fmt if c.get("ai_analysis")]
+                _ds_cache["dump_risk"] = [{**c.get("ai_analysis", {}), "coin": c["coin"]} for c in dump_risk_fmt if c.get("ai_analysis")]
+                _ds_cache["updated_at"] = datetime.now(timezone.utc)
+                _ds_fresh = True
+
+                print(f"  ✓ DeepSeek analysis complete: {pp_count} pre-pump + {dr_count} dump-risk enriched (cached for 15min)")
             except Exception as ds_err:
                 import traceback
                 print(f"  ⚠ DeepSeek scanner analysis failed: {ds_err}")
