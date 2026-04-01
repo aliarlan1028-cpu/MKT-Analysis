@@ -131,7 +131,10 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
             <p className="text-[10px] text-text-muted leading-relaxed mb-1">{c.ai_analysis.reasoning}</p>
           )}
           {c.ai_analysis.market_style && (
-            <p className="text-[10px] text-accent-yellow/80 mb-1">💡 {c.ai_analysis.market_style}</p>
+            <p className="text-[10px] text-accent-yellow/80 mb-1">💡 做市风格: {c.ai_analysis.market_style}</p>
+          )}
+          {c.ai_analysis.historical_pattern && (
+            <p className="text-[10px] text-purple-400/80 mb-1">📊 历史模式: {c.ai_analysis.historical_pattern}</p>
           )}
           {c.ai_analysis.suggestion && (
             <p className="text-[10px] text-accent-blue/90 font-medium">📋 {c.ai_analysis.suggestion}</p>

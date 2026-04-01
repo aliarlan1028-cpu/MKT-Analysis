@@ -230,6 +230,7 @@ export interface AiTradeSignal {
   // DeepSeek scanner analysis fields
   verdict?: string;       // "看涨" | "看跌" | "观望"
   market_style?: string;  // 做市风格描述
+  historical_pattern?: string;  // 历史模式对比
   suggestion?: string;    // 交易建议
   risk_warning?: string;  // 风险提示
   key_support?: number[];
