@@ -49,9 +49,18 @@ export default function ReportCard({ report }: { report: AnalysisReport }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold">
-            {report.name} {SESSION_LABELS[report.session] || report.session}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold">
+              {report.name} {SESSION_LABELS[report.session] || report.session}
+            </h2>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              report.ai_provider === "deepseek"
+                ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                : "bg-purple-500/10 text-purple-400 border-purple-500/30"
+            }`}>
+              {report.ai_provider === "deepseek" ? "🧠 DeepSeek" : "✨ Gemini"}
+            </span>
+          </div>
           <p className="text-sm text-text-muted">{timeStr}</p>
         </div>
         <div className="text-right">

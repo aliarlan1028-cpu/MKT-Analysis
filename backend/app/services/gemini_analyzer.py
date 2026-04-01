@@ -146,6 +146,7 @@ async def analyze_symbol(
         session=session,
         timestamp=datetime.now(timezone.utc),
         price_at_analysis=market.price,
+        ai_provider="gemini",
         signal=TradingSignal(**data["signal"]),
         technical=AnalysisSection(**data["technical"]),
         fundamental=AnalysisSection(**data["fundamental"]),

@@ -213,6 +213,7 @@ async def analyze_symbol_deepseek(
         session=session,
         timestamp=datetime.now(timezone.utc),
         price_at_analysis=market.price,
+        ai_provider="deepseek",
         signal=TradingSignal(**data["signal"]),
         technical=AnalysisSection(**data["technical"]),
         fundamental=AnalysisSection(**data["fundamental"]),

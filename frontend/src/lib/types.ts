@@ -67,6 +67,7 @@ export interface AnalysisReport {
   session: string;
   timestamp: string;
   price_at_analysis: number;
+  ai_provider?: string;  // "gemini" | "deepseek"
   signal: TradingSignal;
   technical: AnalysisSection;
   fundamental: AnalysisSection;

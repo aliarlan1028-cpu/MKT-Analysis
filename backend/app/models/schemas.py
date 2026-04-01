@@ -85,9 +85,10 @@ class AnalysisReport(BaseModel):
     id: str | None = None
     symbol: str
     name: str
-    session: str  # "morning", "noon", "evening"
+    session: str  # "morning", "evening"
     timestamp: datetime
     price_at_analysis: float
+    ai_provider: str = "gemini"  # "gemini" or "deepseek"
     signal: TradingSignal
     technical: AnalysisSection
     fundamental: AnalysisSection
