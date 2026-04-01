@@ -137,6 +137,24 @@ def _calc_ema(closes: list[float], period: int) -> float | None:
     return ema
 
 
+def _calc_atr(highs: list[float], lows: list[float], closes: list[float], period: int = 14) -> float | None:
+    """Calculate Average True Range."""
+    if len(closes) < 2 or len(highs) < 2:
+        return None
+    trs = []
+    for i in range(1, len(closes)):
+        tr = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i - 1]),
+            abs(lows[i] - closes[i - 1]),
+        )
+        trs.append(tr)
+    p = min(period, len(trs))
+    if p == 0:
+        return None
+    return sum(trs[-p:]) / p
+
+
 async def _analyze_coin(ticker: dict, oi_map: dict[str, float]) -> dict | None:
     """Analyze a single coin and return scores."""
     inst_id = ticker.get("instId", "")
@@ -233,11 +251,28 @@ async def _enrich_with_klines(coin_data: dict) -> dict:
         oi_coins = coin_data.get("open_interest", 0)
         price = coin_data.get("price", 0)
         coin_data["oi_usd"] = oi_coins * price if oi_coins and price else 0
+
+        # ATR for entry/SL/TP calculation
+        highs = [float(k[2]) for k in klines]
+        lows = [float(k[3]) for k in klines]
+        atr = _calc_atr(highs, lows, closes, 14)
+        coin_data["atr"] = atr
+
+        # Recent swing low/high (last 12 bars = 2 days of 4H)
+        recent_lows = lows[-12:] if len(lows) >= 12 else lows
+        recent_highs = highs[-12:] if len(highs) >= 12 else highs
+        coin_data["recent_swing_low"] = min(recent_lows) if recent_lows else price
+        coin_data["recent_swing_high"] = max(recent_highs) if recent_highs else price
+
+        # EMA21 value for reference
+        coin_data["ema21"] = ema21
     else:
         coin_data.update({
             "rsi": None, "bb_width": None, "volume_ratio": None,
             "consecutive_up_days": 0, "cumulative_return_7d": 0,
             "ema_deviation_pct": 0, "volume_trend": 1.0, "oi_usd": 0,
+            "atr": None, "recent_swing_low": None, "recent_swing_high": None,
+            "ema21": None,
         })
 
     return coin_data
@@ -465,7 +500,52 @@ async def scan_all_coins() -> dict:
     dump_risk = sorted(dump_risk_all, key=lambda x: x["dump_risk_score"], reverse=True)[:3]
 
     # Format output
-    def _fmt(c: dict, score_key: str) -> dict:
+    def _calc_trade_levels(c: dict, is_pump: bool) -> dict:
+        """Calculate entry, stop-loss, and take-profit based on ATR and swing levels."""
+        price = c["price"]
+        atr = c.get("atr")
+        swing_low = c.get("recent_swing_low", price)
+        swing_high = c.get("recent_swing_high", price)
+        ema21 = c.get("ema21")
+
+        if is_pump:
+            # Pre-pump: long setup
+            # Entry: current price or slightly below (near EMA21 if available)
+            entry = round(ema21, 8) if ema21 and ema21 < price else round(price, 8)
+            # SL: 1.5x ATR below entry, or recent swing low (whichever is tighter)
+            if atr:
+                atr_sl = round(entry - 1.5 * atr, 8)
+                sl = max(atr_sl, round(swing_low * 0.99, 8))  # don't go below swing low - 1%
+            else:
+                sl = round(swing_low * 0.99, 8)
+            # TP: 2:1 and 3:1 RR
+            risk = entry - sl if entry > sl else price * 0.02
+            tp1 = round(entry + 2.0 * risk, 8)
+            tp2 = round(entry + 3.0 * risk, 8)
+        else:
+            # Dump-risk: short setup
+            # Entry: current price or slightly above (near recent high)
+            entry = round(price, 8)
+            # SL: 1.5x ATR above entry, or recent swing high + 1%
+            if atr:
+                atr_sl = round(entry + 1.5 * atr, 8)
+                sl = min(atr_sl, round(swing_high * 1.01, 8))
+            else:
+                sl = round(swing_high * 1.01, 8)
+            # TP: 2:1 and 3:1 RR
+            risk = sl - entry if sl > entry else price * 0.02
+            tp1 = round(entry - 2.0 * risk, 8)
+            tp2 = round(entry - 3.0 * risk, 8)
+
+        return {
+            "entry_price": entry,
+            "stop_loss": sl,
+            "take_profit_1": tp1,
+            "take_profit_2": tp2,
+        }
+
+    def _fmt(c: dict, score_key: str, is_pump: bool) -> dict:
+        levels = _calc_trade_levels(c, is_pump)
         return {
             "coin": c["coin"],
             "inst_id": c["inst_id"],
@@ -482,10 +562,11 @@ async def scan_all_coins() -> dict:
             "consecutive_up_days": c.get("consecutive_up_days", 0),
             "score": c[score_key],
             "ai_analysis": None,
+            **levels,
         }
 
-    pre_pump_fmt = [_fmt(c, "pre_pump_score") for c in pre_pump]
-    dump_risk_fmt = [_fmt(c, "dump_risk_score") for c in dump_risk]
+    pre_pump_fmt = [_fmt(c, "pre_pump_score", is_pump=True) for c in pre_pump]
+    dump_risk_fmt = [_fmt(c, "dump_risk_score", is_pump=False) for c in dump_risk]
 
     now = datetime.now(timezone.utc)
     result = {

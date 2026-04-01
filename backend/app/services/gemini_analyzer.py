@@ -56,7 +56,7 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         '"entry_zone":[84200,84500],"stop_loss":83400,'
         '"take_profit":[85800,87200],"leverage_suggestion":"3x-5x",'
         '"risk_reward_ratio":2.5},'
-        '"technical":{"title":"技术面分析","content":"综合判断","bullets":["要点1","要点2","要点3"]},'
+        '"technical":{"title":"技术面分析","content":"综合判断","bullets":["要点1","要点2","要点3"],"key_support":[83000,82500],"key_resistance":[86000,87500]},'
         '"fundamental":{"title":"基本面分析","content":"综合判断","bullets":["要点1","要点2"]},'
         '"sentiment":{"title":"情绪面分析","content":"综合判断","bullets":["要点1","要点2"]},'
         '"macro":{"title":"宏观面分析","content":"综合判断","bullets":["要点1","要点2"]},'
@@ -86,7 +86,8 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         "  * impact_if_missed: 如果数据不及预期，对加密市场的具体影响（方向+幅度）\n"
         "- 所有价格用美元保留小数点后2位\n"
         "- confidence反映你对该方向判断的把握程度(0-100)\n"
-        "- 中文回复但JSON key保持英文"
+        "- 中文回复但JSON key保持英文\n"
+        "- technical部分必须包含key_support和key_resistance字段，各给出2个关键价位(数字数组)"
     )
 
 

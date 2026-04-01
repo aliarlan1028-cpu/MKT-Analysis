@@ -77,6 +77,8 @@ class AnalysisSection(BaseModel):
     title: str
     content: str
     bullets: list[str] = []
+    key_support: list[float] = []
+    key_resistance: list[float] = []
 
 
 class AnalysisReport(BaseModel):

@@ -87,6 +87,32 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
         </div>
       </div>
 
+      {/* Entry / SL / TP levels */}
+      {c.entry_price != null && (
+        <div className={`mt-2 p-2 rounded-md border ${isPump ? "border-accent-green/20 bg-accent-green/5" : "border-accent-red/20 bg-accent-red/5"}`}>
+          <div className="text-[10px] font-semibold mb-1 opacity-70">
+            {isPump ? "📈 做多点位" : "📉 做空点位"}
+          </div>
+          <div className="grid grid-cols-4 gap-1 text-[11px] font-mono">
+            <div>
+              <span className="block text-[9px] opacity-50">入场</span>
+              <span className="text-accent-blue">${c.entry_price}</span>
+            </div>
+            <div>
+              <span className="block text-[9px] opacity-50">止损</span>
+              <span className="text-accent-red">${c.stop_loss}</span>
+            </div>
+            <div>
+              <span className="block text-[9px] opacity-50">止盈1</span>
+              <span className="text-accent-green">${c.take_profit_1}</span>
+            </div>
+            <div>
+              <span className="block text-[9px] opacity-50">止盈2</span>
+              <span className="text-accent-green">${c.take_profit_2}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -91,6 +91,28 @@ export default function ReportCard({ report }: { report: AnalysisReport }) {
         )}
       </div>
 
+      {/* Key Support & Resistance */}
+      {(report.technical.key_support?.length || report.technical.key_resistance?.length) && (
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="bg-accent-green/5 border border-accent-green/20 rounded-lg px-3 py-2">
+            <div className="text-xs text-accent-green font-semibold mb-1">🟢 关键支撑位</div>
+            <div className="font-mono text-sm space-y-0.5">
+              {report.technical.key_support?.map((p, i) => (
+                <div key={i} className="text-accent-green">${p.toLocaleString()}</div>
+              )) || <div className="text-text-muted">N/A</div>}
+            </div>
+          </div>
+          <div className="bg-accent-red/5 border border-accent-red/20 rounded-lg px-3 py-2">
+            <div className="text-xs text-accent-red font-semibold mb-1">🔴 关键阻力位</div>
+            <div className="font-mono text-sm space-y-0.5">
+              {report.technical.key_resistance?.map((p, i) => (
+                <div key={i} className="text-accent-red">${p.toLocaleString()}</div>
+              )) || <div className="text-text-muted">N/A</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Analysis Sections */}
       <div className="grid md:grid-cols-2 gap-4">
         <Section section={report.technical} />

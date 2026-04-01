@@ -43,6 +43,8 @@ export interface AnalysisSection {
   title: string;
   content: string;
   bullets: string[];
+  key_support?: number[];
+  key_resistance?: number[];
 }
 
 export interface CalendarEvent {
@@ -242,6 +244,10 @@ export interface PumpCandidate {
   consecutive_up_days: number;
   score: number;
   ai_analysis?: AiTradeSignal | string | null;
+  entry_price?: number;
+  stop_loss?: number;
+  take_profit_1?: number;
+  take_profit_2?: number;
 }
 
 export interface PumpScannerResult {

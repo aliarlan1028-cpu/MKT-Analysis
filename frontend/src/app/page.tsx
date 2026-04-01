@@ -152,50 +152,49 @@ export default function Home() {
       {tab === "reports" && (
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {reports.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {reports.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => loadReport(r.id)}
-                    className={`shrink-0 px-3 py-2 rounded-lg text-sm border transition-colors ${
-                      activeReport?.id === r.id
-                        ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
-                        : "border-card-border bg-card-bg text-text-muted hover:border-accent-blue/40"
-                    }`}
-                  >
-                    <span className={r.direction === "LONG" ? "text-accent-green" : r.direction === "SHORT" ? "text-accent-red" : "text-accent-yellow"}>●</span>
-                    {" "}{r.name} · {new Date(r.timestamp).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Always visible: manual trigger button + report selector */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              <button
+                onClick={async () => {
+                  setAnalyzing(true);
+                  try {
+                    const res = await fetch(`${API}/analyze/all`, { method: "POST" });
+                    if (res.ok) {
+                      await fetchData();
+                    } else {
+                      alert("分析触发失败，请稍后重试");
+                    }
+                  } catch {
+                    alert("无法连接后端服务");
+                  } finally {
+                    setAnalyzing(false);
+                  }
+                }}
+                disabled={analyzing}
+                className="shrink-0 px-3 py-2 bg-accent-blue text-white rounded-lg text-sm hover:bg-accent-blue/80 transition-colors disabled:opacity-50"
+              >
+                {analyzing ? "⏳ 分析中..." : "🚀 手动推送"}
+              </button>
+              {reports.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => loadReport(r.id)}
+                  className={`shrink-0 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                    activeReport?.id === r.id
+                      ? "border-accent-blue bg-accent-blue/10 text-accent-blue"
+                      : "border-card-border bg-card-bg text-text-muted hover:border-accent-blue/40"
+                  }`}
+                >
+                  <span className={r.direction === "LONG" ? "text-accent-green" : r.direction === "SHORT" ? "text-accent-red" : "text-accent-yellow"}>●</span>
+                  {" "}{r.name} · {new Date(r.timestamp).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </button>
+              ))}
+            </div>
             {activeReport ? (
               <ReportCard report={activeReport} />
             ) : (
               <div className="bg-card-bg border border-card-border rounded-xl p-8 text-center text-text-muted">
-                <p className="mb-4">暂无分析报告，请等待下次定时分析或手动触发</p>
-                <button
-                  onClick={async () => {
-                    setAnalyzing(true);
-                    try {
-                      const res = await fetch(`${API}/analyze/all`, { method: "POST" });
-                      if (res.ok) {
-                        await fetchData();
-                      } else {
-                        alert("分析触发失败，请稍后重试");
-                      }
-                    } catch {
-                      alert("无法连接后端服务");
-                    } finally {
-                      setAnalyzing(false);
-                    }
-                  }}
-                  disabled={analyzing}
-                  className="px-4 py-2 bg-accent-blue text-white rounded-lg hover:bg-accent-blue/80 transition-colors disabled:opacity-50"
-                >
-                  {analyzing ? "⏳ 分析中，请稍候..." : "🚀 立即生成分析报告"}
-                </button>
+                <p>暂无分析报告，请点击上方「🚀 手动推送」按钮生成</p>
               </div>
             )}
           </div>
