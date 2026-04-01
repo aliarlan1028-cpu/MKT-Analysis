@@ -1,22 +1,83 @@
-"""Report generation orchestrator - ties together data, indicators, and AI."""
+"""Report generation orchestrator - ties together data, indicators, and AI.
 
+Enriched pipeline: multi-TF indicators, real key levels, news, BTC context.
+"""
+
+import asyncio
 import traceback
+import httpx
 from datetime import datetime
 from app.core.config import settings
 from app.core.database import save_report
 from app.models.schemas import AnalysisReport
 from app.services.market_data import get_market_data_binance, fetch_cmc_batch, fetch_fear_greed
-from app.services.technical import calculate_indicators, empty_indicators
+from app.services.technical import (
+    calculate_multi_tf, calculate_key_levels, empty_indicators,
+    format_multi_tf_for_prompt, format_key_levels_for_prompt,
+)
 from app.services.gemini_analyzer import analyze_symbol
 from app.services.deepseek_analyzer import analyze_symbol_deepseek
 
 
-async def generate_report_for_symbol(symbol: str) -> AnalysisReport | None:
+# ── News fetcher (free, no API key) ──
+
+async def fetch_crypto_news(symbol: str = "BTC", limit: int = 8) -> str:
+    """Fetch latest crypto news headlines from CryptoCompare (free, no key)."""
+    try:
+        category_map = {
+            "BTCUSDT": "BTC", "SOLUSDT": "SOL,Solana", "SUIUSDT": "SUI",
+        }
+        cats = category_map.get(symbol, "BTC")
+        url = f"https://min-api.cryptocompare.com/data/v2/news/?lang=EN&categories={cats}"
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+        articles = data.get("Data", [])[:limit]
+        if not articles:
+            return "暂无相关新闻"
+        lines = []
+        for i, a in enumerate(articles, 1):
+            title = a.get("title", "")
+            source = a.get("source", "")
+            lines.append(f"{i}. [{source}] {title}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"  ⚠ News fetch failed: {e}")
+        return "新闻获取失败"
+
+
+# ── BTC context for altcoins ──
+
+async def _get_btc_context() -> str:
+    """Get BTC's current state as context for altcoin analysis."""
+    try:
+        btc_market = await get_market_data_binance("BTCUSDT")
+        if not btc_market:
+            return "BTC数据不可用"
+        btc_tf = await calculate_multi_tf("BTCUSDT")
+        btc_4h = btc_tf.get("4h")
+        btc_1d = btc_tf.get("1d")
+        trend_4h = "多头" if (btc_4h and btc_4h.ema_21 and btc_4h.ema_55 and btc_4h.ema_21 > btc_4h.ema_55) else "空头"
+        trend_1d = "多头" if (btc_1d and btc_1d.ema_21 and btc_1d.ema_55 and btc_1d.ema_21 > btc_1d.ema_55) else "空头"
+        return (
+            f"=== BTC关联背景 ===\n"
+            f"BTC价格: ${btc_market.price:,.2f} | 24h涨跌: {btc_market.price_change_pct_24h}%\n"
+            f"BTC资金费率: {btc_market.funding_rate} | 多空比: {btc_market.long_short_ratio}\n"
+            f"BTC 4h趋势: {trend_4h} (RSI={btc_4h.rsi if btc_4h else 'N/A'}) | 日线趋势: {trend_1d} (RSI={btc_1d.rsi if btc_1d else 'N/A'})\n"
+            f"⚠ 山寨币高度关联BTC，BTC方向变化将直接影响本币走势"
+        )
+    except Exception as e:
+        print(f"  ⚠ BTC context fetch failed: {e}")
+        return "BTC关联数据获取失败"
+
+
+async def generate_report_for_symbol(symbol: str, btc_context: str = "") -> AnalysisReport | None:
     """Generate a full analysis report for one symbol."""
     try:
         print(f"[{datetime.now():%H:%M:%S}] Generating report for {symbol}...")
 
-        # 1. Fetch market data (Binance first, then CoinMarketCap batch fallback)
+        # 1. Fetch market data
         market = await get_market_data_binance(symbol)
         if not market:
             cmc_batch = await fetch_cmc_batch()
@@ -26,44 +87,66 @@ async def generate_report_for_symbol(symbol: str) -> AnalysisReport | None:
             return None
         print(f"  ✓ Market data: ${market.price:,.2f}")
 
-        # 2. Calculate technical indicators locally (may fail if Binance klines blocked)
+        # 2. Parallel fetch: multi-TF indicators + key levels + news
         try:
-            indicators = await calculate_indicators(symbol, interval="4h")
-            print(f"  ✓ Technical indicators: RSI={indicators.rsi}")
+            multi_tf_task = calculate_multi_tf(symbol)
+            key_levels_task = calculate_key_levels(symbol)
+            news_task = fetch_crypto_news(symbol)
+            multi_tf, key_levels, news_text = await asyncio.gather(
+                multi_tf_task, key_levels_task, news_task
+            )
+            indicators = multi_tf.get("4h", empty_indicators(symbol))  # primary TF for schema
+            multi_tf_text = format_multi_tf_for_prompt(multi_tf)
+            key_levels_text = format_key_levels_for_prompt(key_levels)
+            print(f"  ✓ Multi-TF indicators: 1h/4h/1D (RSI_4h={indicators.rsi})")
+            print(f"  ✓ Key levels: {len(key_levels.get('swing_highs', []))} resistance, {len(key_levels.get('swing_lows', []))} support")
+            print(f"  ✓ News: {news_text[:60]}...")
         except Exception as te:
-            print(f"  ⚠ Technical indicators unavailable ({te}), using AI search instead")
+            print(f"  ⚠ Enriched data partially failed ({te}), using basic mode")
             indicators = empty_indicators(symbol)
+            multi_tf_text = ""
+            key_levels_text = ""
+            key_levels = {}
+            news_text = ""
 
         # 3. Fetch fear & greed index
         fear_greed = await fetch_fear_greed()
         print(f"  ✓ Fear & Greed: {fear_greed.value} ({fear_greed.label})")
 
-        # 4. Run Gemini AI analysis (primary) → DeepSeek fallback on 429
+        # 4. Build enriched context
+        enriched_context = {
+            "multi_tf_text": multi_tf_text,
+            "key_levels_text": key_levels_text,
+            "key_levels": key_levels,
+            "news_text": news_text,
+            "btc_context": btc_context,
+        }
+
+        # 5. Run Gemini AI analysis (primary) → DeepSeek fallback on 429
         report = None
         try:
-            report = await analyze_symbol(market, indicators, fear_greed)
+            report = await analyze_symbol(market, indicators, fear_greed, enriched_context)
             print(f"  ✓ Gemini Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
         except Exception as gemini_err:
             err_str = str(gemini_err)
             if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
                 print(f"  ⚠ Gemini 额度用完 (429), 降级到 DeepSeek...")
                 try:
-                    report = await analyze_symbol_deepseek(market, indicators, fear_greed)
+                    report = await analyze_symbol_deepseek(market, indicators, fear_greed, enriched_context)
                     print(f"  ✓ DeepSeek Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
                 except Exception as ds_err:
                     print(f"  ✗ DeepSeek also failed: {ds_err}")
                     traceback.print_exc()
                     return None
             else:
-                raise  # re-raise non-429 errors
+                raise
 
         if not report:
             return None
 
-        # 5. Save to database
+        # 6. Save to database
         save_report(report)
         print(f"  ✓ Saved to database: {report.id}")
-
         return report
 
     except Exception as e:
@@ -78,9 +161,17 @@ async def generate_all_reports() -> list[AnalysisReport]:
     print(f"  Starting scheduled analysis at {datetime.now():%Y-%m-%d %H:%M:%S}")
     print(f"{'='*60}")
 
+    # Pre-fetch BTC context once for altcoins
+    btc_context = ""
+    if any(s != "BTCUSDT" for s in settings.SYMBOLS):
+        print("  📊 Fetching BTC context for altcoin analysis...")
+        btc_context = await _get_btc_context()
+        print(f"  ✓ BTC context ready")
+
     reports = []
     for symbol in settings.SYMBOLS:
-        report = await generate_report_for_symbol(symbol)
+        ctx = btc_context if symbol != "BTCUSDT" else ""
+        report = await generate_report_for_symbol(symbol, btc_context=ctx)
         if report:
             reports.append(report)
 

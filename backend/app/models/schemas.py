@@ -25,7 +25,7 @@ class MarketData(BaseModel):
 # ── Technical Indicators ──
 class TechnicalIndicators(BaseModel):
     symbol: str
-    timeframe: str  # "4h" or "1d"
+    timeframe: str  # "1h", "4h", "1d"
     rsi: float | None = None
     macd: float | None = None
     macd_signal: float | None = None
@@ -38,6 +38,13 @@ class TechnicalIndicators(BaseModel):
     bb_lower: float | None = None
     atr: float | None = None
     volume_sma_20: float | None = None
+    # New indicators
+    stoch_rsi_k: float | None = None
+    stoch_rsi_d: float | None = None
+    adx: float | None = None
+    obv: float | None = None          # On-Balance Volume (raw)
+    obv_slope: float | None = None    # OBV trend (positive=accumulation)
+    vwap: float | None = None
 
 
 # ── Fear & Greed ──

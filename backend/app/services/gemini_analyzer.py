@@ -9,7 +9,7 @@ from app.models.schemas import (
     MarketData, TechnicalIndicators, FearGreedIndex,
     AnalysisReport, AnalysisSection, TradingSignal, CalendarEvent,
 )
-from app.services.technical import format_indicators_for_prompt
+from app.services.technical import format_indicators_for_prompt, format_multi_tf_for_prompt, format_key_levels_for_prompt
 
 SESSION_LABELS = {
     "morning": "早盘分析 06:00",
@@ -28,10 +28,16 @@ def _get_session_name() -> str:
 
 
 def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
-                  fear_greed: FearGreedIndex, session: str) -> str:
+                  fear_greed: FearGreedIndex, session: str,
+                  enriched: dict | None = None) -> str:
     label = SESSION_LABELS.get(session, session)
     ind_text = format_indicators_for_prompt(indicators)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Multi-TF and key levels from enriched context
+    multi_tf_text = enriched.get("multi_tf_text", "") if enriched else ""
+    key_levels_text = enriched.get("key_levels_text", "") if enriched else ""
+    btc_context = enriched.get("btc_context", "") if enriched else ""
 
     data_section = (
         f"当前时间: {now_str} (北京时间)\n分析时段: {label}\n\n"
@@ -43,7 +49,23 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         f"资金费率: {market.funding_rate}\n"
         f"多空比(大户): {market.long_short_ratio}\n"
         f"未平仓量: {market.open_interest} ({market.open_interest_change_pct}% 变化)\n\n"
-        f"=== 技术指标 ===\n{ind_text}\n\n"
+    )
+
+    # Add multi-TF section
+    if multi_tf_text:
+        data_section += f"=== 多时间框架技术分析 ===\n{multi_tf_text}\n\n"
+    else:
+        data_section += f"=== 技术指标 ===\n{ind_text}\n\n"
+
+    # Add key levels
+    if key_levels_text:
+        data_section += f"{key_levels_text}\n\n"
+
+    # Add BTC context for altcoins
+    if btc_context:
+        data_section += f"{btc_context}\n\n"
+
+    data_section += (
         f"=== 市场情绪 ===\n"
         f"恐慌贪婪指数: {fear_greed.value} ({fear_greed.label})"
     )
@@ -53,7 +75,7 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         '"entry_zone":[84200,84500],"stop_loss":83400,'
         '"take_profit":[85800,87200],"leverage_suggestion":"3x-5x",'
         '"risk_reward_ratio":2.5},'
-        '"technical":{"title":"技术面分析","content":"综合判断","bullets":["要点1","要点2","要点3"],"key_support":[83000,82500],"key_resistance":[86000,87500]},'
+        '"technical":{"title":"技术面分析","content":"多时间框架综合判断","bullets":["日线趋势判断","4h结构分析","1h入场时机","VWAP/StochRSI交叉信号"],"key_support":[83000,82500],"key_resistance":[86000,87500]},'
         '"fundamental":{"title":"基本面分析","content":"综合判断","bullets":["要点1","要点2"]},'
         '"sentiment":{"title":"情绪面分析","content":"综合判断","bullets":["要点1","要点2"]},'
         '"macro":{"title":"宏观面分析","content":"综合判断","bullets":["要点1","要点2"]},'
@@ -66,11 +88,17 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
     )
 
     return (
-        "你是一位顶级加密货币合约交易分析师。请根据以下实时数据和你通过Google搜索获取的最新信息，"
-        f"对 {market.name} ({market.symbol}) 进行全面的合约交易分析。\n\n"
+        "你是一位顶级加密货币合约交易分析师，精通多时间框架分析和量价关系。\n"
+        "请根据以下**多维度实时数据**和你通过Google搜索获取的最新信息，"
+        f"对 {market.name} ({market.symbol}) 进行专业级合约交易分析。\n\n"
         f"{data_section}\n\n"
         "=== 分析要求 ===\n"
-        f"请搜索并整合以下最新信息后给出分析:\n"
+        "请严格遵循以下专业交易分析框架:\n"
+        "1. **多时间框架共振**: 日线定方向→4h找结构→1h抓入场，三个周期方向一致时信心最高\n"
+        "2. **真实关键价位**: entry_zone/stop_loss/take_profit必须参考上方提供的摆动高低点和Fib回撤位\n"
+        "3. **量价验证**: ADX判断趋势强度，OBV确认资金流向，VWAP作为机构成本参考\n"
+        "4. **StochRSI交叉**: 比普通RSI更灵敏的超买超卖信号\n\n"
+        f"请搜索并整合以下最新信息:\n"
         f"1. 最新的{market.name}相关新闻、政策、ETF资金流向\n"
         "2. 美联储最新政策动向、利率预期\n"
         "3. 美元指数DXY走势对加密市场影响\n"
@@ -78,13 +106,12 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         f"请严格按以下JSON格式返回(不要包含markdown代码块标记):\n{json_schema}\n\n"
         "注意:\n"
         "- calendar_events只包含未来7天内的美国经济数据和美联储相关事件\n"
-        "- 每个calendar_event必须包含impact_if_met和impact_if_missed两个字段:\n"
-        "  * impact_if_met: 如果数据达到或超过预期，对加密市场的具体影响（方向+幅度）\n"
-        "  * impact_if_missed: 如果数据不及预期，对加密市场的具体影响（方向+幅度）\n"
+        "- 每个calendar_event必须包含impact_if_met和impact_if_missed两个字段\n"
         "- 所有价格用美元保留小数点后2位\n"
         "- confidence反映你对该方向判断的把握程度(0-100)\n"
         "- 中文回复但JSON key保持英文\n"
-        "- technical部分必须包含key_support和key_resistance字段，各给出2个关键价位(数字数组)"
+        "- technical部分必须包含key_support和key_resistance字段，基于提供的摆动高低点给出2个关键价位\n"
+        "- 如果多时间框架方向矛盾(如日线多头但1h空头)，confidence应降低并在risk_warning中说明"
     )
 
 
@@ -105,10 +132,11 @@ async def analyze_symbol(
     market: MarketData,
     indicators: TechnicalIndicators,
     fear_greed: FearGreedIndex,
+    enriched_context: dict | None = None,
 ) -> AnalysisReport:
     """Run Gemini analysis with Google Search Grounding for a symbol."""
     session = _get_session_name()
-    prompt = _build_prompt(market, indicators, fear_greed, session)
+    prompt = _build_prompt(market, indicators, fear_greed, session, enriched_context)
 
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
 

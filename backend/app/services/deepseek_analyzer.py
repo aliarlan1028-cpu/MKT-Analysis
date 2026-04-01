@@ -11,7 +11,7 @@ from app.models.schemas import (
     MarketData, TechnicalIndicators, FearGreedIndex,
     AnalysisReport, AnalysisSection, TradingSignal, CalendarEvent,
 )
-from app.services.technical import format_indicators_for_prompt
+from app.services.technical import format_indicators_for_prompt, format_multi_tf_for_prompt, format_key_levels_for_prompt
 from app.services.market_data import _okx_get
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
@@ -511,15 +511,27 @@ async def analyze_symbol_deepseek(
     market: MarketData,
     indicators: TechnicalIndicators,
     fear_greed: FearGreedIndex,
+    enriched_context: dict | None = None,
 ) -> AnalysisReport:
-    """Generate analysis report using DeepSeek (Gemini fallback)."""
+    """Generate analysis report using DeepSeek (Gemini fallback).
+
+    Enhanced with: multi-TF indicators, real key levels, news, BTC context.
+    """
     session = _get_session_name()
     label = SESSION_LABELS.get(session, session)
     ind_text = format_indicators_for_prompt(indicators)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    # Extract enriched context
+    multi_tf_text = enriched_context.get("multi_tf_text", "") if enriched_context else ""
+    key_levels_text = enriched_context.get("key_levels_text", "") if enriched_context else ""
+    news_text = enriched_context.get("news_text", "") if enriched_context else ""
+    btc_context = enriched_context.get("btc_context", "") if enriched_context else ""
+
     system_prompt = (
-        "你是一位顶级加密货币合约交易分析师。请根据提供的实时数据进行全面的合约交易分析。"
+        "你是一位顶级加密货币合约交易分析师，精通多时间框架分析、量价关系和技术形态识别。"
+        "你将收到丰富的多维度数据(多时间框架指标、真实关键价位、最新新闻)。"
+        "请基于这些数据进行专业级分析，不要猜测没有数据支持的结论。"
         "必须严格按指定的JSON格式返回，不要包含markdown代码块标记。中文回复但JSON key保持英文。"
     )
 
@@ -528,15 +540,16 @@ async def analyze_symbol_deepseek(
         '"entry_zone":[84200,84500],"stop_loss":83400,'
         '"take_profit":[85800,87200],"leverage_suggestion":"3x-5x",'
         '"risk_reward_ratio":2.5},'
-        '"technical":{"title":"技术面分析","content":"综合判断","bullets":["要点1","要点2","要点3"],"key_support":[83000,82500],"key_resistance":[86000,87500]},'
-        '"fundamental":{"title":"基本面分析","content":"综合判断","bullets":["要点1","要点2"]},'
-        '"sentiment":{"title":"情绪面分析","content":"综合判断","bullets":["要点1","要点2"]},'
-        '"macro":{"title":"宏观面分析","content":"综合判断","bullets":["要点1","要点2"]},'
+        '"technical":{"title":"技术面分析","content":"多时间框架综合判断","bullets":["日线趋势","4h结构","1h入场时机","量价背离检测"],"key_support":[83000,82500],"key_resistance":[86000,87500]},'
+        '"fundamental":{"title":"基本面/新闻分析","content":"基于最新新闻的判断","bullets":["新闻要点1","新闻要点2"]},'
+        '"sentiment":{"title":"情绪面分析","content":"资金费率+多空比+恐贪指数综合判断","bullets":["要点1","要点2"]},'
+        '"macro":{"title":"宏观面分析","content":"基于新闻中的宏观线索推断","bullets":["要点1","要点2"]},'
         '"risk_warning":{"title":"风险提示","content":"风险总结","bullets":["风险1","风险2"]},'
         '"calendar_events":[]}'
     )
 
-    user_prompt = (
+    # Build rich data section
+    data_section = (
         f"当前时间: {now_str} (北京时间)\n分析时段: {label}\n\n"
         f"=== {market.name} ({market.symbol}) 实时数据 ===\n"
         f"当前价格: ${market.price:,.2f}\n"
@@ -546,15 +559,43 @@ async def analyze_symbol_deepseek(
         f"资金费率: {market.funding_rate}\n"
         f"多空比(大户): {market.long_short_ratio}\n"
         f"未平仓量: {market.open_interest} ({market.open_interest_change_pct}% 变化)\n\n"
-        f"=== 技术指标 ===\n{ind_text}\n\n"
+    )
+
+    if multi_tf_text:
+        data_section += f"=== 多时间框架技术分析 ===\n{multi_tf_text}\n\n"
+    else:
+        data_section += f"=== 技术指标 ===\n{ind_text}\n\n"
+
+    if key_levels_text:
+        data_section += f"{key_levels_text}\n\n"
+
+    if btc_context:
+        data_section += f"{btc_context}\n\n"
+
+    data_section += (
         f"=== 市场情绪 ===\n"
         f"恐慌贪婪指数: {fear_greed.value} ({fear_greed.label})\n\n"
+    )
+
+    if news_text and news_text != "暂无相关新闻":
+        data_section += f"=== 最新新闻(请据此分析基本面和宏观面) ===\n{news_text}\n\n"
+
+    user_prompt = (
+        f"{data_section}"
+        "=== 分析要求 ===\n"
+        "请严格遵循专业交易分析框架:\n"
+        "1. **多时间框架共振**: 日线定方向→4h找结构→1h抓入场\n"
+        "2. **真实关键价位**: entry/SL/TP必须参考上方提供的摆动高低点和Fib回撤位，不要凭空编造\n"
+        "3. **量价验证**: ADX判断趋势强度，OBV确认资金流向，VWAP作为机构成本参考\n"
+        "4. **新闻驱动**: 结合提供的新闻判断基本面方向\n"
+        "5. **风险控制**: 如果多TF方向矛盾，降低confidence并说明\n\n"
         f"请严格按以下JSON格式返回:\n{json_schema}\n\n"
         "注意:\n"
         "- 所有价格用美元保留小数点后2位\n"
         "- confidence反映你对该方向判断的把握程度(0-100)\n"
-        "- technical部分必须包含key_support和key_resistance字段，各给出2个关键价位(数字数组)\n"
-        "- calendar_events留空数组(DeepSeek无搜索能力)"
+        "- technical的key_support和key_resistance必须基于提供的摆动高低点\n"
+        "- fundamental部分请基于提供的新闻进行分析(不要说'无法搜索')\n"
+        "- calendar_events留空数组"
     )
 
     raw = await _deepseek_chat(system_prompt, user_prompt, temperature=0.7, max_tokens=8192)
