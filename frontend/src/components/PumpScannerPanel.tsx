@@ -136,6 +136,9 @@ function CoinRow({ c, type }: { c: PumpCandidate; type: "pump" | "dump" }) {
           {c.ai_analysis.historical_pattern && (
             <p className="text-[10px] text-purple-400/80 mb-1">📊 历史模式: {c.ai_analysis.historical_pattern}</p>
           )}
+          {c.ai_analysis.continuation_signal && (
+            <p className="text-[10px] text-orange-400/90 mb-1">🔥 持续信号: {c.ai_analysis.continuation_signal}</p>
+          )}
           {c.ai_analysis.suggestion && (
             <p className="text-[10px] text-accent-blue/90 font-medium">📋 {c.ai_analysis.suggestion}</p>
           )}
