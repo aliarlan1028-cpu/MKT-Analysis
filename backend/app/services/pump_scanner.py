@@ -606,6 +606,15 @@ async def scan_all_coins() -> dict:
                     for i, ai in enumerate(pp_ai):
                         if ai and i < len(pre_pump_fmt):
                             pre_pump_fmt[i]["ai_analysis"] = ai
+                            # Override ATR levels with DeepSeek-generated levels
+                            if ai.get("entry_price") is not None:
+                                pre_pump_fmt[i]["entry_price"] = ai["entry_price"]
+                            if ai.get("stop_loss") is not None:
+                                pre_pump_fmt[i]["stop_loss"] = ai["stop_loss"]
+                            if ai.get("take_profit_1") is not None:
+                                pre_pump_fmt[i]["take_profit_1"] = ai["take_profit_1"]
+                            if ai.get("take_profit_2") is not None:
+                                pre_pump_fmt[i]["take_profit_2"] = ai["take_profit_2"]
                             pp_count += 1
 
                 dr_count = 0
@@ -613,6 +622,15 @@ async def scan_all_coins() -> dict:
                     for i, ai in enumerate(dr_ai):
                         if ai and i < len(dump_risk_fmt):
                             dump_risk_fmt[i]["ai_analysis"] = ai
+                            # Override ATR levels with DeepSeek-generated levels
+                            if ai.get("entry_price") is not None:
+                                dump_risk_fmt[i]["entry_price"] = ai["entry_price"]
+                            if ai.get("stop_loss") is not None:
+                                dump_risk_fmt[i]["stop_loss"] = ai["stop_loss"]
+                            if ai.get("take_profit_1") is not None:
+                                dump_risk_fmt[i]["take_profit_1"] = ai["take_profit_1"]
+                            if ai.get("take_profit_2") is not None:
+                                dump_risk_fmt[i]["take_profit_2"] = ai["take_profit_2"]
                             dr_count += 1
 
                 # Update DeepSeek cache

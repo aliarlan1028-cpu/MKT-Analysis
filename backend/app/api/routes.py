@@ -16,7 +16,7 @@ from app.services.liquidation import get_liquidation_map, get_all_liquidation_ma
 from app.services.correlation import get_correlation_matrix
 from app.services.price_spike import get_spike_alerts
 from app.services.pump_scanner import scan_all_coins, get_scanner_postmortems
-from app.services.btc_derivatives import get_btc_derivatives
+from app.services.btc_derivatives import get_btc_derivatives, get_derivatives, get_okx_perpetual_symbols
 
 router = APIRouter()
 
@@ -163,12 +163,24 @@ async def scanner_postmortems(limit: int = 30):
     return get_scanner_postmortems(limit=limit)
 
 
-# ── BTC Derivatives Dashboard ──
+# ── Derivatives Dashboard (Universal) ──
 
 @router.get("/btc-derivatives")
 async def btc_derivatives():
-    """Get BTC derivatives dashboard: funding, OI, liquidations, technicals, CVD, volume profile."""
+    """Get BTC derivatives dashboard (backward compatible)."""
     return await get_btc_derivatives()
+
+
+@router.get("/derivatives/symbols")
+async def derivatives_symbols():
+    """Get all available OKX USDT perpetual symbols for the selector."""
+    return await get_okx_perpetual_symbols()
+
+
+@router.get("/derivatives/{symbol}")
+async def derivatives_by_symbol(symbol: str):
+    """Get derivatives dashboard for any OKX perpetual symbol."""
+    return await get_derivatives(symbol)
 
 
 # ── Professional Dashboard (all-in-one) ──

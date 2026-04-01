@@ -1,4 +1,6 @@
-"""BTC Derivatives Dashboard — Core + Technical + Advanced metrics.
+"""Derivatives Dashboard — Core + Technical + Advanced metrics.
+
+Supports any OKX USDT perpetual swap (default: BTC).
 
 Core:    Funding Rate, Open Interest, Liquidations
 Technical: EMA Trend (21/55/200), RSI Divergence, ATR Stop-Loss
@@ -8,15 +10,34 @@ Advanced:  CVD (Cumulative Volume Delta), Volume Profile
 import pandas as pd
 import pandas_ta as ta
 from datetime import datetime, timezone
-from app.services.market_data import _okx_get, fetch_klines, _OKX_SYMBOL_MAP
+from app.services.market_data import _okx_get
 
-SYMBOL = "BTCUSDT"
-SWAP_INST = "BTC-USDT-SWAP"
-ULY = "BTC-USDT"
-
-# ── Cache ──
-_cache: dict = {"data": None, "ts": None}
+# ── Per-symbol cache ──
+_cache: dict[str, dict] = {}  # key = swap_inst, value = {"data": ..., "ts": ...}
 CACHE_TTL = 60  # seconds
+
+
+def _parse_symbol(symbol: str) -> tuple[str, str, str]:
+    """Parse symbol into (swap_inst, uly, ccy).
+
+    Accepts formats:
+      - "BTC-USDT-SWAP" → as-is
+      - "BTC" → "BTC-USDT-SWAP"
+      - "BTCUSDT" → "BTC-USDT-SWAP"
+      - "ETH-USDT" → "ETH-USDT-SWAP"
+    """
+    s = symbol.upper().strip()
+    if s.endswith("-USDT-SWAP"):
+        ccy = s.replace("-USDT-SWAP", "")
+    elif s.endswith("-USDT"):
+        ccy = s.replace("-USDT", "")
+    elif s.endswith("USDT"):
+        ccy = s.replace("USDT", "")
+    else:
+        ccy = s
+    swap_inst = f"{ccy}-USDT-SWAP"
+    uly = f"{ccy}-USDT"
+    return swap_inst, uly, ccy
 
 
 def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
@@ -230,36 +251,45 @@ def _compute_verdict(core: dict, tech: dict, adv: dict) -> dict:
     }
 
 
-async def get_btc_derivatives() -> dict:
-    """Return full BTC derivatives dashboard data."""
+async def get_derivatives(symbol: str = "BTC") -> dict:
+    """Return full derivatives dashboard data for any OKX perpetual symbol."""
     import time
-    now = time.time()
-    if _cache["data"] and _cache["ts"] and (now - _cache["ts"]) < CACHE_TTL:
-        return _cache["data"]
+    swap_inst, uly, ccy = _parse_symbol(symbol)
 
-    core = await _fetch_core()
-    tech = await _fetch_technical()
-    adv = await _fetch_advanced()
+    now = time.time()
+    cached = _cache.get(swap_inst)
+    if cached and cached.get("ts") and (now - cached["ts"]) < CACHE_TTL:
+        return cached["data"]
+
+    core = await _fetch_core(swap_inst, uly, ccy)
+    tech = await _fetch_technical(swap_inst)
+    adv = await _fetch_advanced(swap_inst)
 
     verdict = _compute_verdict(core, tech, adv)
 
     result = {
+        "symbol": ccy,
+        "inst_id": swap_inst,
         "core": core,
         "technical": tech,
         "advanced": adv,
         "verdict": verdict,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    _cache["data"] = result
-    _cache["ts"] = now
+    _cache[swap_inst] = {"data": result, "ts": now}
     return result
+
+
+async def get_btc_derivatives() -> dict:
+    """Backward-compatible wrapper for BTC."""
+    return await get_derivatives("BTC")
 
 
 # ═══════════════════════════════════════════
 #  CORE: Funding Rate + OI + Liquidations
 # ═══════════════════════════════════════════
 
-async def _fetch_core() -> dict:
+async def _fetch_core(swap_inst: str, uly: str, ccy: str) -> dict:
     funding_rate = None
     next_funding_rate = None
     oi_coin = None
@@ -272,7 +302,7 @@ async def _fetch_core() -> dict:
 
     # Price
     try:
-        body = await _okx_get("/api/v5/market/ticker", {"instId": SWAP_INST})
+        body = await _okx_get("/api/v5/market/ticker", {"instId": swap_inst})
         if body and body["data"]:
             current_price = float(body["data"][0].get("last", 0))
     except Exception:
@@ -280,7 +310,7 @@ async def _fetch_core() -> dict:
 
     # Funding rate
     try:
-        body = await _okx_get("/api/v5/public/funding-rate", {"instId": SWAP_INST})
+        body = await _okx_get("/api/v5/public/funding-rate", {"instId": swap_inst})
         if body and body["data"]:
             funding_rate = float(body["data"][0].get("fundingRate", 0))
             next_funding_rate = float(body["data"][0].get("nextFundingRate", 0)) if body["data"][0].get("nextFundingRate") else None
@@ -289,7 +319,7 @@ async def _fetch_core() -> dict:
 
     # Open Interest
     try:
-        body = await _okx_get("/api/v5/public/open-interest", {"instType": "SWAP", "instId": SWAP_INST})
+        body = await _okx_get("/api/v5/public/open-interest", {"instType": "SWAP", "instId": swap_inst})
         if body and body["data"]:
             oi_coin = float(body["data"][0].get("oiCcy", 0))
             oi_usd = oi_coin * current_price if current_price else None
@@ -299,7 +329,7 @@ async def _fetch_core() -> dict:
     # OI history (24h change) — use 2 data points
     try:
         body = await _okx_get("/api/v5/rubik/stat/contracts/open-interest-volume",
-                              {"ccy": "BTC", "period": "1D"})
+                              {"ccy": ccy, "period": "1D"})
         if body and body["data"] and len(body["data"]) >= 2:
             latest_oi = float(body["data"][0][1])  # oi field
             prev_oi = float(body["data"][1][1])
@@ -311,14 +341,13 @@ async def _fetch_core() -> dict:
     # Recent liquidations
     try:
         body = await _okx_get("/api/v5/public/liquidation-orders",
-                              {"instType": "SWAP", "uly": ULY, "state": "filled", "limit": "100"})
+                              {"instType": "SWAP", "uly": uly, "state": "filled", "limit": "100"})
         if body and body["data"]:
-            ct_val = 0.01  # BTC contract value
             for batch in body["data"]:
                 for d in batch.get("details", []):
                     sz = float(d.get("sz", 0))
                     bk_px = float(d.get("bkPx", 0))
-                    usd = sz * ct_val * bk_px
+                    usd = sz * bk_px  # sz is in contracts, approximate USD
                     side = d.get("posSide", "long")
                     if side == "long":
                         liq_long_usd += usd
@@ -346,9 +375,27 @@ async def _fetch_core() -> dict:
 #  TECHNICAL: EMA Trend + RSI Divergence + ATR Stop
 # ═══════════════════════════════════════════
 
-async def _fetch_technical() -> dict:
+async def _fetch_okx_candles(inst_id: str, bar: str = "4H", limit: int = 250) -> list[list]:
+    """Fetch candles directly from OKX for any instId."""
+    body = await _okx_get("/api/v5/market/candles",
+                          {"instId": inst_id, "bar": bar, "limit": str(min(limit, 300))})
+    if body and body.get("data"):
+        # OKX returns [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+        # Reverse to ascending order and pad to 12 columns for compatibility
+        rows = body["data"][::-1]
+        result = []
+        for r in rows:
+            # Pad to 12 columns: ts, o, h, l, c, vol, ts, volCcyQuote, 0, 0, 0, 0
+            result.append([r[0], r[1], r[2], r[3], r[4], r[5], r[0], r[7] if len(r) > 7 else "0", "0", "0", "0", "0"])
+        return result
+    return []
+
+
+async def _fetch_technical(swap_inst: str) -> dict:
     try:
-        raw = await fetch_klines(SYMBOL, interval="4h", limit=250)
+        raw = await _fetch_okx_candles(swap_inst, bar="4H", limit=250)
+        if not raw:
+            return {"error": "K线数据获取失败"}
     except Exception:
         return {"error": "K线数据获取失败"}
 
@@ -432,9 +479,11 @@ async def _fetch_technical() -> dict:
 #  ADVANCED: CVD + Volume Profile
 # ═══════════════════════════════════════════
 
-async def _fetch_advanced() -> dict:
+async def _fetch_advanced(swap_inst: str) -> dict:
     try:
-        raw = await fetch_klines(SYMBOL, interval="1h", limit=200)
+        raw = await _fetch_okx_candles(swap_inst, bar="1H", limit=200)
+        if not raw:
+            return {"error": "K线数据获取失败"}
     except Exception:
         return {"error": "K线数据获取失败"}
 
@@ -506,3 +555,44 @@ async def _fetch_advanced() -> dict:
         "value_area_low": val_,
     }
 
+
+
+# ── OKX Perpetual Symbols List (for frontend selector) ──
+_symbols_cache: dict = {"data": None, "ts": None}
+SYMBOLS_CACHE_TTL = 3600  # 1 hour
+
+
+async def get_okx_perpetual_symbols() -> list[dict]:
+    """Fetch all OKX USDT perpetual swap symbols for the frontend selector."""
+    import time
+    now = time.time()
+    if _symbols_cache["data"] and _symbols_cache["ts"] and (now - _symbols_cache["ts"]) < SYMBOLS_CACHE_TTL:
+        return _symbols_cache["data"]
+
+    try:
+        body = await _okx_get("/api/v5/public/instruments", {"instType": "SWAP"})
+        if not body or not body.get("data"):
+            return []
+
+        symbols = []
+        for item in body["data"]:
+            inst_id = item.get("instId", "")
+            if not inst_id.endswith("-USDT-SWAP"):
+                continue
+            ccy = inst_id.replace("-USDT-SWAP", "")
+            symbols.append({
+                "instId": inst_id,
+                "ccy": ccy,
+                "label": f"{ccy}/USDT",
+            })
+
+        # Sort: BTC first, ETH second, then alphabetical
+        priority = {"BTC": 0, "ETH": 1, "SOL": 2, "SUI": 3}
+        symbols.sort(key=lambda x: (priority.get(x["ccy"], 999), x["ccy"]))
+
+        _symbols_cache["data"] = symbols
+        _symbols_cache["ts"] = now
+        return symbols
+    except Exception as e:
+        print(f"  ⚠ Failed to fetch OKX perpetual symbols: {e}")
+        return []

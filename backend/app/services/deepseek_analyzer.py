@@ -469,6 +469,10 @@ async def analyze_scanner_coin(coin: dict, category: str) -> dict | None:
         f'"continuation_signal":"继续涨/跌的信号强度和依据(30-60字)",'
         f'"key_support":[价位1,价位2],'
         f'"key_resistance":[价位1,价位2],'
+        f'"entry_price":具体入场价格(数字),'
+        f'"stop_loss":止损价格(数字),'
+        f'"take_profit_1":第一止盈目标(数字,2:1盈亏比),'
+        f'"take_profit_2":第二止盈目标(数字,3:1盈亏比),'
         f'"suggestion":"具体交易建议(30-60字)",'
         f'"risk_warning":"主要风险(20-40字)"}}'
     )
