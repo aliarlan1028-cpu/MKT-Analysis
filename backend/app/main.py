@@ -19,7 +19,7 @@ scheduler = AsyncIOScheduler()
 
 
 def _setup_scheduler():
-    """Schedule analysis jobs at 08:00, 12:00, 22:00 Beijing time (UTC+8)."""
+    """Schedule analysis jobs at configured Beijing time (UTC+8)."""
     for hour in settings.SCHEDULE_HOURS:
         # Convert Beijing time to UTC: subtract 8 hours
         utc_hour = (hour - 8) % 24

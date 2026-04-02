@@ -552,7 +552,11 @@ async def analyze_symbol_deepseek(
         '"sentiment":{"title":"情绪面分析","content":"资金费率+多空比+恐贪指数综合判断","bullets":["要点1","要点2"]},'
         '"macro":{"title":"宏观面分析","content":"基于新闻中的宏观线索推断","bullets":["要点1","要点2"]},'
         '"risk_warning":{"title":"风险提示","content":"风险总结","bullets":["风险1","风险2"]},'
-        '"calendar_events":[]}'
+        '"calendar_events":[{"date":"2026-04-03","time":"20:30","title":"美国非农就业数据",'
+        '"impact":"HIGH","category":"economic","previous":"15.1万",'
+        '"forecast":"16.0万","description":"影响说明",'
+        '"impact_if_met":"达到或超预期: 对加密市场利好/利空分析",'
+        '"impact_if_missed":"不及预期: 对加密市场利好/利空分析"}]}'
     )
 
     # Build rich data section
@@ -584,8 +588,20 @@ async def analyze_symbol_deepseek(
         f"恐慌贪婪指数: {fear_greed.value} ({fear_greed.label})\n\n"
     )
 
-    if news_text and news_text != "暂无相关新闻":
+    has_news = news_text and news_text not in ("暂无相关新闻", "新闻获取失败")
+    if has_news:
         data_section += f"=== 最新新闻(请据此分析基本面和宏观面) ===\n{news_text}\n\n"
+
+    news_instruction = (
+        "4. **新闻驱动**: 结合提供的新闻判断基本面方向\n"
+        if has_news else
+        "4. **基本面分析**: 请根据你对该币种近期基本面的了解进行分析(项目进展、生态发展、链上活跃度等)\n"
+    )
+    fundamental_note = (
+        "- fundamental部分请基于提供的新闻进行分析\n"
+        if has_news else
+        "- fundamental部分请基于你对该币种的知识进行基本面分析，不要说'无法搜索'或'新闻获取失败'\n"
+    )
 
     user_prompt = (
         f"{data_section}"
@@ -594,15 +610,16 @@ async def analyze_symbol_deepseek(
         "1. **多时间框架共振**: 日线定方向→4h找结构→1h抓入场\n"
         "2. **真实关键价位**: entry/SL/TP必须参考上方提供的摆动高低点和Fib回撤位，不要凭空编造\n"
         "3. **量价验证**: ADX判断趋势强度，OBV确认资金流向，VWAP作为机构成本参考\n"
-        "4. **新闻驱动**: 结合提供的新闻判断基本面方向\n"
+        f"{news_instruction}"
         "5. **风险控制**: 如果多TF方向矛盾，降低confidence并说明\n\n"
         f"请严格按以下JSON格式返回:\n{json_schema}\n\n"
         "注意:\n"
         "- 所有价格用美元保留小数点后2位\n"
         "- confidence反映你对该方向判断的把握程度(0-100)\n"
         "- technical的key_support和key_resistance必须基于提供的摆动高低点\n"
-        "- fundamental部分请基于提供的新闻进行分析(不要说'无法搜索')\n"
-        "- calendar_events留空数组"
+        f"{fundamental_note}"
+        "- calendar_events请列出未来7天内美国重大经济数据和事件(非农、CPI、FOMC、初请失业金等)\n"
+        "- 每个calendar_event必须包含impact_if_met和impact_if_missed两个字段"
     )
 
     raw = await _deepseek_chat(system_prompt, user_prompt, temperature=0.7, max_tokens=8192)
