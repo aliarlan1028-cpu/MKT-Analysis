@@ -3,9 +3,8 @@
 import type { AnalysisReport } from "@/lib/types";
 
 const SESSION_LABELS: Record<string, string> = {
-  morning: "☀️ 早盘 08:00",
-  noon: "🌤️ 午盘 12:00",
-  evening: "🌙 晚盘 22:00",
+  morning: "☀️ 早盘 06:00",
+  evening: "🌙 晚盘 20:00",
 };
 
 function DirectionBadge({ direction, confidence }: { direction: string; confidence: number }) {

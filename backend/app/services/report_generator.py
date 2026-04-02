@@ -122,7 +122,7 @@ async def generate_report_for_symbol(symbol: str, btc_context: str = "") -> Anal
             "btc_context": btc_context,
         }
 
-        # 5. Run Gemini AI analysis (primary) → DeepSeek fallback on 429
+        # 5. Run Gemini AI analysis (primary) → DeepSeek fallback on ANY error
         report = None
         try:
             report = await analyze_symbol(market, indicators, fear_greed, enriched_context)
@@ -131,15 +131,15 @@ async def generate_report_for_symbol(symbol: str, btc_context: str = "") -> Anal
             err_str = str(gemini_err)
             if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
                 print(f"  ⚠ Gemini 额度用完 (429), 降级到 DeepSeek...")
-                try:
-                    report = await analyze_symbol_deepseek(market, indicators, fear_greed, enriched_context)
-                    print(f"  ✓ DeepSeek Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
-                except Exception as ds_err:
-                    print(f"  ✗ DeepSeek also failed: {ds_err}")
-                    traceback.print_exc()
-                    return None
             else:
-                raise
+                print(f"  ⚠ Gemini 失败 ({err_str[:120]}), 降级到 DeepSeek...")
+            try:
+                report = await analyze_symbol_deepseek(market, indicators, fear_greed, enriched_context)
+                print(f"  ✓ DeepSeek Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
+            except Exception as ds_err:
+                print(f"  ✗ DeepSeek also failed: {ds_err}")
+                traceback.print_exc()
+                return None
 
         if not report:
             return None

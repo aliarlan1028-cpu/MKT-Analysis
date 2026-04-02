@@ -93,7 +93,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold">
             <span className="text-accent-yellow">⚡</span> CryptoEdge Pro
           </h1>
-          <p className="text-sm text-text-muted">AI 驱动合约交易分析 · 每日 08:00 / 12:00 / 22:00</p>
+          <p className="text-sm text-text-muted">AI 驱动合约交易分析 · 每日 06:00 / 20:00</p>
         </div>
         {dashboard && (
           <span className="text-xs text-text-muted">
