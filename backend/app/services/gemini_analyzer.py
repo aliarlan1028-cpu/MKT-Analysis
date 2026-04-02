@@ -117,15 +117,37 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
 
 
 def _parse_response(text: str) -> dict:
-    """Clean and parse Gemini JSON response."""
+    """Clean and parse Gemini JSON response (robust for 2.5 Flash thinking models)."""
     text = text.strip()
+    # Remove markdown code block wrappers
     if text.startswith("```"):
         text = text.split("\n", 1)[1]
     if text.endswith("```"):
         text = text.rsplit("```", 1)[0]
     if text.startswith("json"):
         text = text[4:]
-    return json.loads(text.strip())
+    text = text.strip()
+
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Extract JSON object between first { and last }
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        try:
+            return json.loads(text[first_brace:last_brace + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # Last resort: try fixing common issues (trailing commas, etc.)
+    import re
+    cleaned = text[first_brace:last_brace + 1] if first_brace != -1 else text
+    cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)  # remove trailing commas
+    return json.loads(cleaned)
 
 
 async def analyze_symbol(
