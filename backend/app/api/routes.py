@@ -8,7 +8,7 @@ from app.models.schemas import (
     AnalysisReport, DashboardResponse, ReportListItem, FearGreedIndex,
     PostMortem, WhaleAlertResponse, LiquidationMap, CorrelationMatrix,
 )
-from app.services.market_data import get_all_markets, get_market_data_binance, fetch_fear_greed, fetch_cmc_batch
+from app.services.market_data import get_all_markets, get_market_data_binance, fetch_fear_greed, fetch_cmc_batch, get_market_data_any_okx
 from app.services.report_generator import generate_report_for_symbol, generate_all_reports
 from app.services.postmortem import get_postmortems, get_win_rate, evaluate_all_expired
 from app.services.whale_alert import get_whale_alerts
@@ -173,6 +173,18 @@ async def scanner_analyze_coin(symbol: str):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"分析失败: {str(e)}")
+
+
+# ── Market Data (Any OKX Symbol) ──
+
+@router.get("/market/okx/{coin}")
+async def market_data_okx(coin: str):
+    """Get market data for any OKX perpetual symbol by base coin name."""
+    coin = coin.upper()
+    data = await get_market_data_any_okx(coin)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"No data found for {coin}")
+    return data
 
 
 # ── Derivatives Dashboard (Universal) ──

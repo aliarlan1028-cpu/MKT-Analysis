@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import MarketCard from "@/components/MarketCard";
 import FearGreedGauge from "@/components/FearGreedGauge";
 import ReportCard from "@/components/ReportCard";
@@ -15,10 +15,24 @@ import BtcDashboard from "@/components/BtcDashboard";
 import BtcVerdictCard from "@/components/BtcVerdictCard";
 import BtcTopCards from "@/components/BtcTopCards";
 import type {
-  DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard,
+  DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard, MarketData,
 } from "@/lib/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const CUSTOM_COINS_KEY = "cryptoedge_custom_coins";
+const DEFAULT_CUSTOM_COINS = ["SOL", "SUI"];
+
+function getStoredCoins(): string[] {
+  if (typeof window === "undefined") return DEFAULT_CUSTOM_COINS;
+  try {
+    const stored = localStorage.getItem(CUSTOM_COINS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_CUSTOM_COINS;
+}
 
 export default function Home() {
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
@@ -30,6 +44,43 @@ export default function Home() {
   const [tab, setTab] = useState<"reports" | "pro">("reports");
   const [selectedSymbol, setSelectedSymbol] = useState<string>("BTC");
   const [analyzing, setAnalyzing] = useState(false);
+
+  // Custom market cards
+  const [customCoins, setCustomCoins] = useState<string[]>(DEFAULT_CUSTOM_COINS);
+  const [customMarkets, setCustomMarkets] = useState<Record<string, MarketData>>({});
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [addSearch, setAddSearch] = useState("");
+  const [allSymbols, setAllSymbols] = useState<string[]>([]);
+  const addRef = useRef<HTMLDivElement>(null);
+
+  // Load stored coins on mount
+  useEffect(() => { setCustomCoins(getStoredCoins()); }, []);
+
+  // Close add dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (addRef.current && !addRef.current.contains(e.target as Node)) setShowAddCard(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Fetch custom market data
+  const fetchCustomMarkets = useCallback(async (coins: string[]) => {
+    const results: Record<string, MarketData> = {};
+    await Promise.all(coins.map(async (coin) => {
+      try {
+        const res = await fetch(`${API}/market/okx/${coin}`);
+        if (res.ok) results[coin] = await res.json();
+      } catch { /* ignore */ }
+    }));
+    setCustomMarkets(results);
+  }, []);
+
+  // Fetch symbols list for add dropdown
+  useEffect(() => {
+    fetch(`${API}/derivatives/symbols`).then(r => r.ok ? r.json() : []).then(setAllSymbols).catch(() => {});
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -66,9 +117,29 @@ export default function Home() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 60000);
+    fetchCustomMarkets(customCoins);
+    const interval = setInterval(() => { fetchData(); fetchCustomMarkets(customCoins); }, 60000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchCustomMarkets, customCoins]);
+
+  const addCustomCoin = (coin: string) => {
+    if (customCoins.includes(coin) || customCoins.length >= 2) return;
+    const updated = [...customCoins, coin];
+    setCustomCoins(updated);
+    localStorage.setItem(CUSTOM_COINS_KEY, JSON.stringify(updated));
+    fetchCustomMarkets(updated);
+    setShowAddCard(false);
+    setAddSearch("");
+  };
+
+  const removeCustomCoin = (coin: string) => {
+    const updated = customCoins.filter(c => c !== coin);
+    setCustomCoins(updated);
+    localStorage.setItem(CUSTOM_COINS_KEY, JSON.stringify(updated));
+    const newMarkets = { ...customMarkets };
+    delete newMarkets[coin];
+    setCustomMarkets(newMarkets);
+  };
 
   const loadReport = async (id: string) => {
     const res = await fetch(`${API}/reports/${id}`);
@@ -111,11 +182,61 @@ export default function Home() {
       {dashboard && (
         <section className="mb-8">
           <h2 className="text-lg font-semibold mb-4">📊 实时行情</h2>
-          {/* Row 1: Market cards + EMA + ATR + CVD (same size) */}
+          {/* Row 1: BTC card (fixed) + custom cards + add button + Fear&Greed + TopCards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-            {dashboard.markets.map((m) => (
+            {/* BTC card (always shown, from dashboard) */}
+            {dashboard.markets.filter(m => m.symbol === "BTCUSDT").map((m) => (
               <MarketCard key={m.symbol} data={m} />
             ))}
+            {/* Custom coin cards */}
+            {customCoins.map((coin) => {
+              const data = customMarkets[coin];
+              return data ? (
+                <MarketCard key={coin} data={data} onRemove={() => removeCustomCoin(coin)} />
+              ) : (
+                <div key={coin} className="bg-card-bg border border-card-border rounded-xl p-5 flex items-center justify-center">
+                  <div className="animate-spin w-5 h-5 border-2 border-accent-blue border-t-transparent rounded-full" />
+                </div>
+              );
+            })}
+            {/* Add card button (when < 2 custom coins) */}
+            {customCoins.length < 2 && (
+              <div className="relative" ref={addRef}>
+                <button
+                  onClick={() => setShowAddCard(!showAddCard)}
+                  className="w-full h-full min-h-[140px] bg-card-bg border-2 border-dashed border-card-border rounded-xl flex flex-col items-center justify-center text-text-muted hover:border-accent-blue/40 hover:text-accent-blue transition-colors"
+                >
+                  <span className="text-2xl mb-1">+</span>
+                  <span className="text-xs">添加币对</span>
+                </button>
+                {showAddCard && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-card-bg border border-card-border rounded-lg shadow-xl z-50 overflow-hidden">
+                    <input
+                      type="text"
+                      placeholder="搜索币对..."
+                      value={addSearch}
+                      onChange={(e) => setAddSearch(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2 bg-transparent border-b border-card-border text-sm outline-none placeholder:text-text-muted"
+                      autoFocus
+                    />
+                    <div className="max-h-48 overflow-y-auto">
+                      {allSymbols
+                        .filter(s => s !== "BTC" && !customCoins.includes(s) && s.includes(addSearch))
+                        .slice(0, 30)
+                        .map(s => (
+                          <button
+                            key={s}
+                            onClick={() => addCustomCoin(s)}
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent-blue/10 transition-colors"
+                          >
+                            {s}/USDT
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <FearGreedGauge data={dashboard.fear_greed} />
             <BtcTopCards symbol={selectedSymbol} />
           </div>

@@ -12,13 +12,20 @@ function formatVolume(n: number) {
   return `$${n.toLocaleString()}`;
 }
 
-export default function MarketCard({ data }: { data: MarketData }) {
+export default function MarketCard({ data, onRemove }: { data: MarketData; onRemove?: () => void }) {
   const isUp = data.price_change_pct_24h >= 0;
   const color = isUp ? "text-accent-green" : "text-accent-red";
   const arrow = isUp ? "▲" : "▼";
 
   return (
-    <div className="bg-card-bg border border-card-border rounded-xl p-5 hover:border-accent-blue/40 transition-colors">
+    <div className="bg-card-bg border border-card-border rounded-xl p-5 hover:border-accent-blue/40 transition-colors relative group">
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-full bg-accent-red/20 text-accent-red text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent-red/40"
+          title="移除"
+        >✕</button>
+      )}
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-lg font-bold">{data.name}</h3>

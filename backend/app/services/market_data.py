@@ -444,3 +444,53 @@ async def get_all_markets() -> list[MarketData]:
 
     return results
 
+
+
+async def get_market_data_any_okx(coin: str) -> MarketData | None:
+    """Get market data for ANY OKX perpetual symbol by base coin name (e.g. 'ETH', 'DOGE')."""
+    spot_inst = f"{coin}-USDT"
+    swap_inst = f"{coin}-USDT-SWAP"
+
+    # Fetch spot ticker
+    body = await _okx_get("/api/v5/market/ticker", {"instId": spot_inst})
+    if not body or not body.get("data"):
+        return None
+    ticker = body["data"][0]
+
+    price = float(ticker.get("last", 0))
+    open_24h = float(ticker.get("open24h", 0))
+    change = price - open_24h if open_24h else 0
+    change_pct = (change / open_24h * 100) if open_24h else 0
+
+    # Fetch funding rate
+    funding_rate = None
+    try:
+        fr_body = await _okx_get("/api/v5/public/funding-rate", {"instId": swap_inst})
+        if fr_body and fr_body["data"]:
+            funding_rate = float(fr_body["data"][0].get("fundingRate", 0))
+    except Exception:
+        pass
+
+    # Fetch open interest
+    open_interest = None
+    try:
+        oi_body = await _okx_get("/api/v5/public/open-interest", {"instType": "SWAP", "instId": swap_inst})
+        if oi_body and oi_body["data"]:
+            open_interest = float(oi_body["data"][0].get("oiCcy", 0))
+    except Exception:
+        pass
+
+    return MarketData(
+        symbol=f"{coin}USDT",
+        name=coin,
+        price=price,
+        price_change_24h=round(change, 2),
+        price_change_pct_24h=round(change_pct, 2),
+        high_24h=float(ticker.get("high24h", 0)),
+        low_24h=float(ticker.get("low24h", 0)),
+        volume_24h=float(ticker.get("volCcy24h", 0)),
+        funding_rate=funding_rate,
+        open_interest=open_interest,
+        open_interest_change_pct=None,
+        timestamp=datetime.now(timezone.utc),
+    )
