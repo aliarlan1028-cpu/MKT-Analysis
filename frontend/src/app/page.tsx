@@ -56,7 +56,14 @@ export default function Home() {
   // Load stored coins on mount + fetch symbols list
   useEffect(() => {
     setCustomCoins(getStoredCoins());
-    fetch(`${API}/derivatives/symbols`).then(r => r.ok ? r.json() : []).then(setAllSymbols).catch(() => {});
+    fetch(`${API}/derivatives/symbols`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: Array<{ccy?: string}> | string[]) => {
+        // API returns [{instId, ccy, label}] objects — extract ccy strings
+        const symbols = data.map((d: {ccy?: string} | string) => typeof d === "string" ? d : (d.ccy || ""));
+        setAllSymbols(symbols.filter(Boolean));
+      })
+      .catch(() => {});
   }, []);
 
   // Close add dropdown on outside click
