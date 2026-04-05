@@ -107,6 +107,7 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         "注意:\n"
         "- calendar_events只包含未来7天内的美国经济数据和美联储相关事件\n"
         "- 每个calendar_event必须包含impact_if_met和impact_if_missed两个字段\n"
+        "- previous和forecast字段：对于有数据的经济指标(如CPI、非农、PCE、GDP、初请失业金等)必须填入具体数值(如\"0.3%\"、\"15.1万\"、\"2.8%\")；只有会议纪要等非数据类事件才可以填null\n"
         "- 所有价格用美元保留小数点后2位\n"
         "- confidence反映你对该方向判断的把握程度(0-100)\n"
         "- 中文回复但JSON key保持英文\n"

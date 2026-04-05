@@ -619,7 +619,8 @@ async def analyze_symbol_deepseek(
         "- technical的key_support和key_resistance必须基于提供的摆动高低点\n"
         f"{fundamental_note}"
         "- calendar_events请列出未来7天内美国重大经济数据和事件(非农、CPI、FOMC、初请失业金等)\n"
-        "- 每个calendar_event必须包含impact_if_met和impact_if_missed两个字段"
+        "- 每个calendar_event必须包含impact_if_met和impact_if_missed两个字段\n"
+        "- previous和forecast字段：对于有数据的经济指标(如CPI、非农、PCE、GDP、初请失业金等)必须填入具体数值(如\"0.3%\"、\"15.1万\"、\"2.8%\")；只有会议纪要等非数据类事件才可以填null"
     )
 
     raw = await _deepseek_chat(system_prompt, user_prompt, temperature=0.7, max_tokens=8192)
