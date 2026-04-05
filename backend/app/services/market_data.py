@@ -451,10 +451,8 @@ async def get_market_data_any_okx(coin: str) -> MarketData | None:
     spot_inst = f"{coin}-USDT"
     swap_inst = f"{coin}-USDT-SWAP"
 
-    # Try spot ticker first, fall back to SWAP ticker
-    body = await _okx_get("/api/v5/market/ticker", {"instId": spot_inst})
-    if not body or not body.get("data"):
-        body = await _okx_get("/api/v5/market/ticker", {"instId": swap_inst})
+    # Use SWAP ticker directly (perpetual contract only)
+    body = await _okx_get("/api/v5/market/ticker", {"instId": swap_inst})
     if not body or not body.get("data"):
         return None
     ticker = body["data"][0]
