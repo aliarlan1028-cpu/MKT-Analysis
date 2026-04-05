@@ -3,7 +3,19 @@
 import type { MarketData } from "@/lib/types";
 
 function formatPrice(n: number) {
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Dynamic precision based on price magnitude (match OKX display)
+  let digits = 2;
+  const abs = Math.abs(n);
+  if (abs === 0) digits = 2;
+  else if (abs < 0.0001) digits = 8;
+  else if (abs < 0.001) digits = 6;
+  else if (abs < 0.01) digits = 6;
+  else if (abs < 0.1) digits = 5;
+  else if (abs < 1) digits = 4;
+  else if (abs < 100) digits = 4;
+  else if (abs < 1000) digits = 3;
+  else digits = 2;
+  return n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 function formatVolume(n: number) {

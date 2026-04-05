@@ -457,10 +457,11 @@ async def get_market_data_any_okx(coin: str) -> MarketData | None:
         return None
     ticker = body["data"][0]
 
-    price = float(ticker.get("last", 0))
+    price_str = ticker.get("last", "0")
+    price = float(price_str)
     open_24h = float(ticker.get("open24h", 0))
     change = price - open_24h if open_24h else 0
-    change_pct = (change / open_24h * 100) if open_24h else 0
+    change_pct = round((change / open_24h * 100), 2) if open_24h else 0
 
     # Fetch funding rate
     funding_rate = None
@@ -484,11 +485,11 @@ async def get_market_data_any_okx(coin: str) -> MarketData | None:
         symbol=f"{coin}USDT",
         name=coin,
         price=price,
-        price_change_24h=round(change, 2),
-        price_change_pct_24h=round(change_pct, 2),
+        price_change_24h=change,
+        price_change_pct_24h=change_pct,
         high_24h=float(ticker.get("high24h", 0)),
         low_24h=float(ticker.get("low24h", 0)),
-        volume_24h=float(ticker.get("volCcy24h", 0)),
+        volume_24h=float(ticker.get("volCcy24h", 0)) * price,  # convert base volume to USD
         funding_rate=funding_rate,
         open_interest=open_interest,
         open_interest_change_pct=None,
