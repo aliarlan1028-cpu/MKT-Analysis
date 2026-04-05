@@ -53,8 +53,11 @@ export default function Home() {
   const [allSymbols, setAllSymbols] = useState<string[]>([]);
   const addRef = useRef<HTMLDivElement>(null);
 
-  // Load stored coins on mount
-  useEffect(() => { setCustomCoins(getStoredCoins()); }, []);
+  // Load stored coins on mount + fetch symbols list
+  useEffect(() => {
+    setCustomCoins(getStoredCoins());
+    fetch(`${API}/derivatives/symbols`).then(r => r.ok ? r.json() : []).then(setAllSymbols).catch(() => {});
+  }, []);
 
   // Close add dropdown on outside click
   useEffect(() => {
@@ -67,19 +70,15 @@ export default function Home() {
 
   // Fetch custom market data
   const fetchCustomMarkets = useCallback(async (coins: string[]) => {
+    if (!coins.length) { setCustomMarkets({}); return; }
     const results: Record<string, MarketData> = {};
-    await Promise.all(coins.map(async (coin) => {
+    await Promise.allSettled(coins.map(async (coin) => {
       try {
         const res = await fetch(`${API}/market/okx/${coin}`);
         if (res.ok) results[coin] = await res.json();
       } catch { /* ignore */ }
     }));
     setCustomMarkets(results);
-  }, []);
-
-  // Fetch symbols list for add dropdown
-  useEffect(() => {
-    fetch(`${API}/derivatives/symbols`).then(r => r.ok ? r.json() : []).then(setAllSymbols).catch(() => {});
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -115,19 +114,28 @@ export default function Home() {
     }
   }, []);
 
+  // Main data fetch (dashboard + reports)
   useEffect(() => {
     fetchData();
-    fetchCustomMarkets(customCoins);
-    const interval = setInterval(() => { fetchData(); fetchCustomMarkets(customCoins); }, 60000);
+    const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [fetchData, fetchCustomMarkets, customCoins]);
+  }, [fetchData]);
+
+  // Custom markets fetch (separate from main to avoid cascading re-renders)
+  const customCoinsRef = useRef(customCoins);
+  customCoinsRef.current = customCoins;
+
+  useEffect(() => {
+    fetchCustomMarkets(customCoins);
+    const interval = setInterval(() => fetchCustomMarkets(customCoinsRef.current), 60000);
+    return () => clearInterval(interval);
+  }, [fetchCustomMarkets, customCoins]);
 
   const addCustomCoin = (coin: string) => {
     if (customCoins.includes(coin) || customCoins.length >= 2) return;
     const updated = [...customCoins, coin];
     setCustomCoins(updated);
-    localStorage.setItem(CUSTOM_COINS_KEY, JSON.stringify(updated));
-    fetchCustomMarkets(updated);
+    try { localStorage.setItem(CUSTOM_COINS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
     setShowAddCard(false);
     setAddSearch("");
   };
@@ -135,10 +143,7 @@ export default function Home() {
   const removeCustomCoin = (coin: string) => {
     const updated = customCoins.filter(c => c !== coin);
     setCustomCoins(updated);
-    localStorage.setItem(CUSTOM_COINS_KEY, JSON.stringify(updated));
-    const newMarkets = { ...customMarkets };
-    delete newMarkets[coin];
-    setCustomMarkets(newMarkets);
+    try { localStorage.setItem(CUSTOM_COINS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
   };
 
   const loadReport = async (id: string) => {
