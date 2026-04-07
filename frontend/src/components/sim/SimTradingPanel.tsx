@@ -120,7 +120,7 @@ export default function SimTradingPanel() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [openingPosition, setOpeningPosition] = useState(false);
-  const [klines, setKlines] = useState<unknown[]>([]);
+  const [klinesMap, setKlinesMap] = useState<Record<string, unknown[]>>({});
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [livePrice, setLivePrice] = useState<Record<string, number>>({});
@@ -134,7 +134,18 @@ export default function SimTradingPanel() {
         fetch(`${API}/sim/account`), fetch(`${API}/sim/positions`),
       ]);
       if (accRes.ok) setAccount(await accRes.json());
-      if (posRes.ok) setPositions(await posRes.json());
+      if (posRes.ok) {
+        const allPos: Position[] = await posRes.json();
+        // Load events for open positions
+        const openOnes = allPos.filter(p => p.status === "OPEN");
+        await Promise.allSettled(openOnes.map(async (p) => {
+          try {
+            const evRes = await fetch(`${API}/sim/positions/${p.id}`);
+            if (evRes.ok) { const detail = await evRes.json(); p.events = detail.events; }
+          } catch { /* */ }
+        }));
+        setPositions(allPos);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -171,11 +182,28 @@ export default function SimTradingPanel() {
     return () => clearInterval(interval);
   }, [positions]);
 
-  const chartCoin = selectedCoin || positions.find(p => p.id === selectedPositionId)?.coin;
+  // Fetch klines for all active coins + selected coin
+  const activeCoins = positions.filter(p => p.status === "OPEN" || p.status === "PENDING").map(p => p.coin);
+  const chartCoins = Array.from(new Set([
+    ...(selectedCoin ? [selectedCoin] : []),
+    ...activeCoins,
+  ]));
   useEffect(() => {
-    if (!chartCoin) return;
-    fetch(`${API}/sim/klines/${chartCoin}?bar=5m&limit=200`).then(r => r.ok ? r.json() : []).then(setKlines).catch(() => {});
-  }, [chartCoin]);
+    if (!chartCoins.length) return;
+    const fetchAll = async () => {
+      const newMap: Record<string, unknown[]> = {};
+      await Promise.allSettled(chartCoins.map(async (coin) => {
+        try {
+          const r = await fetch(`${API}/sim/klines/${coin}?bar=5m&limit=200`);
+          if (r.ok) newMap[coin] = await r.json();
+        } catch { /* */ }
+      }));
+      setKlinesMap(prev => ({ ...prev, ...newMap }));
+    };
+    fetchAll();
+    const interval = setInterval(fetchAll, 60000);
+    return () => clearInterval(interval);
+  }, [chartCoins.join(",")]);
 
   const runAnalysis = async () => {
     if (!selectedCoin) return;
@@ -328,17 +356,25 @@ export default function SimTradingPanel() {
             )}
           </div>
 
-          {/* RIGHT: Chart + Active Positions */}
+          {/* RIGHT: Charts + Active Positions */}
           <div className="lg:col-span-8 space-y-4">
-            {chartCoin && klines.length > 0 && (
-              <SimChart coin={chartCoin} klines={klines as any}
-                entryPrice={selectedPosition?.entry_price || undefined}
-                stopLoss={selectedPosition?.stop_loss}
-                takeProfit1={selectedPosition?.take_profit_1}
-                takeProfit2={selectedPosition?.take_profit_2 || undefined}
-                events={selectedPosition?.events}
-                direction={selectedPosition?.direction} />
-            )}
+            {/* Show a chart for each active coin */}
+            <div className={`grid gap-4 ${chartCoins.length >= 2 ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
+              {chartCoins.map(coin => {
+                const coinKlines = klinesMap[coin] || [];
+                const coinPos = openPositions.find(p => p.coin === coin);
+                if (coinKlines.length === 0) return null;
+                return (
+                  <SimChart key={coin} coin={coin} klines={coinKlines as any}
+                    entryPrice={coinPos?.entry_price || undefined}
+                    stopLoss={coinPos?.stop_loss}
+                    takeProfit1={coinPos?.take_profit_1}
+                    takeProfit2={coinPos?.take_profit_2 || undefined}
+                    events={coinPos?.events}
+                    direction={coinPos?.direction} />
+                );
+              })}
+            </div>
 
             {/* Active Positions */}
             <div className="bg-card-bg border border-card-border rounded-xl p-4">
@@ -383,6 +419,17 @@ export default function SimTradingPanel() {
                       <div><span className="text-text-muted">止损</span><div className="font-mono text-accent-red">${pos.stop_loss}</div></div>
                       <div><span className="text-text-muted">止盈</span><div className="font-mono text-accent-green">${pos.take_profit_1}</div></div>
                     </div>
+                    {/* Volatility & Re-analysis Events */}
+                    {pos.events && pos.events.filter(e => e.event_type === "VOLATILITY" || e.event_type === "AI_ANALYSIS").length > 0 && (
+                      <div className="mt-2 space-y-1 border-t border-card-border pt-2">
+                        {pos.events.filter(e => e.event_type === "VOLATILITY" || e.event_type === "AI_ANALYSIS").slice(-3).map((ev, i) => (
+                          <div key={i} className={`text-[10px] p-1.5 rounded ${ev.event_type === "VOLATILITY" ? "bg-purple-500/10 text-purple-300" : "bg-accent-blue/10 text-accent-blue"}`}>
+                            <span className="font-medium">{ev.event_type === "VOLATILITY" ? "⚡" : "🔄"} {ev.timestamp?.slice(11, 16)}</span>
+                            {ev.change_pct ? ` ${ev.change_pct > 0 ? "+" : ""}${ev.change_pct}%` : ""} — {ev.ai_analysis?.slice(0, 150) || ""}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}

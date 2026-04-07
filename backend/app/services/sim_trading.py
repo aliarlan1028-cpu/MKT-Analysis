@@ -396,6 +396,80 @@ async def monitor_positions():
         elif direction == "SHORT" and price <= pos["take_profit_1"]:
             _close_position_at(pos["id"], pos["take_profit_1"], "TP_HIT")
 
+        # --- Volatility detection: >3% move since last snapshot ---
+        try:
+            conn2 = _get_db()
+            prev_snapshots = conn2.execute(
+                "SELECT price FROM sim_price_snapshots WHERE position_id=? ORDER BY id DESC LIMIT 10",
+                (pos["id"],)
+            ).fetchall()
+            conn2.close()
+            if len(prev_snapshots) >= 5:
+                price_5min_ago = prev_snapshots[4]["price"]
+                short_change = abs((price - price_5min_ago) / price_5min_ago * 100)
+                if short_change >= VOLATILITY_THRESHOLD:
+                    # Check we haven't done a volatility analysis in last 10 minutes
+                    conn3 = _get_db()
+                    recent_vol = conn3.execute(
+                        "SELECT id FROM sim_events WHERE position_id=? AND event_type='VOLATILITY' AND timestamp > datetime('now','-10 minutes')",
+                        (pos["id"],)
+                    ).fetchone()
+                    conn3.close()
+                    if not recent_vol:
+                        print(f"  ⚡ Volatility detected: {pos['coin']} moved {short_change:.1f}% in 5min")
+                        try:
+                            from app.services.sim_analyzer import analyze_volatility_event
+                            ai_text = await analyze_volatility_event(pos["coin"], price, short_change if price > price_5min_ago else -short_change, pos)
+                            conn4 = _get_db()
+                            conn4.execute(
+                                "INSERT INTO sim_events (position_id, event_type, price, change_pct, ai_analysis, timestamp) VALUES (?,?,?,?,?,?)",
+                                (pos["id"], "VOLATILITY", price, round(short_change, 2), ai_text, now)
+                            )
+                            conn4.commit()
+                            conn4.close()
+                        except Exception as e:
+                            print(f"    ⚠ Volatility analysis failed: {e}")
+        except Exception:
+            pass
+
+        # --- Periodic re-analysis: every 4 hours ---
+        try:
+            if pos.get("opened_at"):
+                opened = datetime.fromisoformat(pos["opened_at"])
+                hours_open = (datetime.now(_BEIJING_TZ) - opened).total_seconds() / 3600
+                if hours_open >= 4:
+                    conn5 = _get_db()
+                    last_reanalysis = conn5.execute(
+                        "SELECT timestamp FROM sim_events WHERE position_id=? AND event_type='AI_ANALYSIS' ORDER BY id DESC LIMIT 1",
+                        (pos["id"],)
+                    ).fetchone()
+                    conn5.close()
+                    should_reanalyze = True
+                    if last_reanalysis:
+                        last_t = datetime.fromisoformat(last_reanalysis["timestamp"])
+                        if (datetime.now(_BEIJING_TZ) - last_t).total_seconds() < 4 * 3600:
+                            should_reanalyze = False
+                    if should_reanalyze:
+                        print(f"  🔄 Periodic re-analysis for {pos['coin']} (open {hours_open:.1f}h)")
+                        try:
+                            from app.services.sim_analyzer import run_full_analysis
+                            reanalysis = await run_full_analysis(pos["coin"])
+                            summary = ""
+                            if reanalysis.get("step4"):
+                                s4 = reanalysis["step4"]
+                                summary = f"重新分析: {s4.get('direction','N/A')} (置信度{s4.get('confidence','N/A')}%) — {s4.get('reasoning','')}"
+                            conn6 = _get_db()
+                            conn6.execute(
+                                "INSERT INTO sim_events (position_id, event_type, price, ai_analysis, timestamp) VALUES (?,?,?,?,?)",
+                                (pos["id"], "AI_ANALYSIS", price, summary[:500], now)
+                            )
+                            conn6.commit()
+                            conn6.close()
+                        except Exception as e:
+                            print(f"    ⚠ Re-analysis failed: {e}")
+        except Exception:
+            pass
+
 
 async def close_position_at_market(position_id: int) -> dict:
     """Close an open position at current market price."""
