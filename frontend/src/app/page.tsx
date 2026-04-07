@@ -14,6 +14,7 @@ import PumpScannerPanel from "@/components/PumpScannerPanel";
 import BtcDashboard from "@/components/BtcDashboard";
 import BtcVerdictCard from "@/components/BtcVerdictCard";
 import BtcTopCards from "@/components/BtcTopCards";
+import SimTradingPanel from "@/components/sim/SimTradingPanel";
 import type {
   DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard, MarketData,
 } from "@/lib/types";
@@ -41,7 +42,7 @@ export default function Home() {
   const [proDash, setProDash] = useState<ProfessionalDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"reports" | "pro">("reports");
+  const [tab, setTab] = useState<"reports" | "pro" | "sim">("reports");
   const [selectedSymbol, setSelectedSymbol] = useState<string>("BTC");
   const [analyzing, setAnalyzing] = useState(false);
 
@@ -178,16 +179,11 @@ export default function Home() {
           </h1>
           <p className="text-sm text-text-muted">AI 驱动合约交易分析 · 每日 06:00 / 20:00</p>
         </div>
-        <div className="flex items-center gap-3">
-          <a href="/sim" className="px-3 py-1.5 bg-accent-yellow/20 text-accent-yellow rounded-lg text-sm font-semibold hover:bg-accent-yellow/30 transition-colors">
-            🎮 模拟盘
-          </a>
-          {dashboard && (
-            <span className="text-xs text-text-muted">
-              更新于 {new Date(dashboard.last_updated).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
-            </span>
-          )}
-        </div>
+        {dashboard && (
+          <span className="text-xs text-text-muted">
+            更新于 {new Date(dashboard.last_updated).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}
+          </span>
+        )}
       </header>
 
       {error && (
@@ -286,6 +282,16 @@ export default function Home() {
         >
           🎯 专业仪表盘
         </button>
+        <button
+          onClick={() => setTab("sim")}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            tab === "sim"
+              ? "bg-card-bg text-accent-yellow border-b-2 border-accent-yellow"
+              : "text-text-muted hover:text-white"
+          }`}
+        >
+          🎮 AI 模拟盘
+        </button>
       </div>
 
       {tab === "reports" && (
@@ -371,6 +377,8 @@ export default function Home() {
           专业数据加载中...
         </div>
       )}
+
+      {tab === "sim" && <SimTradingPanel />}
     </main>
   );
 }
