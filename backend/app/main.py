@@ -14,6 +14,7 @@ from app.services.report_generator import generate_all_reports
 from app.services.postmortem import init_postmortem_table, evaluate_all_expired
 from app.services.price_spike import start_monitor, stop_monitor
 from app.services.pump_scanner import scan_all_coins, init_scanner_tables, evaluate_scanner_postmortems
+from app.services.sim_trading import init_sim_db, monitor_positions
 
 scheduler = AsyncIOScheduler()
 
@@ -43,7 +44,8 @@ async def lifespan(app: FastAPI):
     init_db()
     init_postmortem_table()
     init_scanner_tables()
-    print("  ✓ Database initialized (reports + postmortems + scanner)")
+    init_sim_db()
+    print("  ✓ Database initialized (reports + postmortems + scanner + sim trading)")
 
     # Setup scheduler
     _setup_scheduler()
@@ -71,8 +73,16 @@ async def lifespan(app: FastAPI):
         name="Scanner Postmortem Evaluation",
         replace_existing=True,
     )
+    # Monitor sim trading positions every minute
+    scheduler.add_job(
+        monitor_positions,
+        CronTrigger(minute="*", timezone="UTC"),
+        id="sim_monitor",
+        name="Sim Trading Position Monitor",
+        replace_existing=True,
+    )
     scheduler.start()
-    print("  ✓ Scheduler started (reports + post-mortem + pump scanner + scanner PM)")
+    print("  ✓ Scheduler started (reports + post-mortem + pump scanner + scanner PM + sim monitor)")
 
     # Start BTC price spike monitor
     start_monitor()

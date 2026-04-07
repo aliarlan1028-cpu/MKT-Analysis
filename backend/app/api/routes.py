@@ -17,6 +17,12 @@ from app.services.correlation import get_correlation_matrix
 from app.services.price_spike import get_spike_alerts
 from app.services.pump_scanner import scan_all_coins, get_scanner_postmortems, analyze_custom_coin
 from app.services.btc_derivatives import get_btc_derivatives, get_derivatives, get_okx_perpetual_symbols
+from app.services.sim_trading import (
+    init_sim_db, get_account, refund_account, get_positions, get_position,
+    get_position_events, get_position_snapshots, open_position, close_position_at_market,
+    close_position_manual, get_current_price,
+)
+from app.services.sim_analyzer import run_full_analysis, review_trade_factors
 
 router = APIRouter()
 
@@ -232,3 +238,126 @@ async def professional_dashboard():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+
+
+# ══════════════════════════════════════════════
+#  SIM TRADING API
+# ══════════════════════════════════════════════
+
+@router.get("/sim/account")
+async def sim_account():
+    return get_account()
+
+
+@router.post("/sim/refund")
+async def sim_refund():
+    return refund_account()
+
+
+@router.get("/sim/positions")
+async def sim_positions(status: str = None):
+    return get_positions(status)
+
+
+@router.get("/sim/positions/{position_id}")
+async def sim_position_detail(position_id: int):
+    pos = get_position(position_id)
+    if not pos:
+        raise HTTPException(status_code=404, detail="Position not found")
+    pos["events"] = get_position_events(position_id)
+    pos["snapshots"] = get_position_snapshots(position_id)
+    return pos
+
+
+@router.post("/sim/analyze/{coin}")
+async def sim_analyze(coin: str):
+    """Run 4-step deep analysis for a coin."""
+    coin = coin.upper()
+    result = await run_full_analysis(coin)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/sim/open")
+async def sim_open_position(data: dict):
+    """Open a new position based on analysis."""
+    required = ["coin", "direction", "entry_price", "stop_loss", "take_profit_1", "factors"]
+    for key in required:
+        if key not in data:
+            raise HTTPException(status_code=400, detail=f"Missing field: {key}")
+    result = open_position(
+        coin=data["coin"].upper(),
+        direction=data["direction"].upper(),
+        target_entry=float(data["entry_price"]),
+        stop_loss=float(data["stop_loss"]),
+        tp1=float(data["take_profit_1"]),
+        tp2=float(data.get("take_profit_2")) if data.get("take_profit_2") else None,
+        factors=data["factors"],
+        analysis_id=data.get("analysis_id"),
+    )
+    return result
+
+
+@router.post("/sim/close/{position_id}")
+async def sim_close_position(position_id: int):
+    """Close an open position at market price."""
+    return await close_position_at_market(position_id)
+
+
+@router.post("/sim/review/{position_id}")
+async def sim_review_position(position_id: int):
+    """Generate post-trade factor review."""
+    pos = get_position(position_id)
+    if not pos or pos["status"] not in ("CLOSED", "LIQUIDATED"):
+        raise HTTPException(status_code=400, detail="仓位未关闭，无法复盘")
+    snapshots = get_position_snapshots(position_id)
+    events = get_position_events(position_id)
+    review = await review_trade_factors(pos, snapshots, events)
+    # Save review to DB
+    if "error" not in review:
+        import json
+        from app.services.sim_trading import _get_db
+        from datetime import datetime, timedelta, timezone as tz
+        _BJ = tz(timedelta(hours=8))
+        now = datetime.now(_BJ).isoformat()
+        conn = _get_db()
+        conn.execute("""
+            INSERT OR REPLACE INTO sim_trade_reports (position_id, summary, correct_factors, wrong_factors, root_cause, lesson, what_if, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (position_id,
+              json.dumps(review.get("factor_reviews", []), ensure_ascii=False),
+              review.get("core_correct_factor", ""),
+              review.get("core_wrong_factor", ""),
+              review.get("root_lesson", ""),
+              review.get("reusable_rule", ""),
+              review.get("what_if", ""),
+              now))
+        # Also save to position
+        conn.execute("UPDATE sim_positions SET factor_review_json=? WHERE id=?",
+                     (json.dumps(review, ensure_ascii=False), position_id))
+        conn.commit()
+        conn.close()
+    return review
+
+
+@router.get("/sim/klines/{coin}")
+async def sim_klines(coin: str, bar: str = "5m", limit: int = 200):
+    """Get klines for chart display."""
+    coin = coin.upper()
+    from app.services.market_data import _okx_get
+    body = await _okx_get("/api/v5/market/candles", {"instId": f"{coin}-USDT-SWAP", "bar": bar, "limit": str(limit)})
+    if not body or not body.get("data"):
+        raise HTTPException(status_code=404, detail=f"No kline data for {coin}")
+    # OKX returns [ts, o, h, l, c, vol, volCcy, ...]
+    klines = []
+    for k in reversed(body["data"]):  # reverse to chronological order
+        klines.append({
+            "time": int(k[0]) // 1000,  # ms to seconds for lightweight-charts
+            "open": float(k[1]),
+            "high": float(k[2]),
+            "low": float(k[3]),
+            "close": float(k[4]),
+            "volume": float(k[5]),
+        })
+    return klines
