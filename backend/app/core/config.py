@@ -13,9 +13,28 @@ class Settings:
     PROJECT_NAME: str = "CryptoEdge Pro"
     VERSION: str = "1.0.0"
 
-    # Gemini
+    # Gemini (supports multiple keys: GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3 ...)
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_API_KEY_2: str = os.getenv("GEMINI_API_KEY_2", "")
+    GEMINI_API_KEY_3: str = os.getenv("GEMINI_API_KEY_3", "")
     GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    @property
+    def gemini_keys(self) -> list[str]:
+        """Return all configured Gemini API keys."""
+        keys = [self.GEMINI_API_KEY, self.GEMINI_API_KEY_2, self.GEMINI_API_KEY_3]
+        return [k for k in keys if k]
+
+    _gemini_key_index: int = 0
+
+    def get_next_gemini_key(self) -> str:
+        """Round-robin through available Gemini API keys."""
+        keys = self.gemini_keys
+        if not keys:
+            return ""
+        key = keys[self._gemini_key_index % len(keys)]
+        Settings._gemini_key_index += 1
+        return key
 
     # Binance
     BINANCE_API_KEY: str = os.getenv("BINANCE_API_KEY", "")

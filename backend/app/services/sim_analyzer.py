@@ -19,7 +19,8 @@ _BEIJING_TZ = timezone(timedelta(hours=8))
 
 async def _gemini_call(prompt: str, system: str = None) -> str:
     """Call Gemini 2.5 Flash with Google Search grounding."""
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    api_key = settings.get_next_gemini_key()
+    client = genai.Client(api_key=api_key)
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
     contents = prompt

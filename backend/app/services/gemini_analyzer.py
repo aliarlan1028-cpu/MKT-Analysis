@@ -161,7 +161,8 @@ async def analyze_symbol(
     session = _get_session_name()
     prompt = _build_prompt(market, indicators, fear_greed, session, enriched_context)
 
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    api_key = settings.get_next_gemini_key()
+    client = genai.Client(api_key=api_key)
 
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
