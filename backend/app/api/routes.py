@@ -271,7 +271,7 @@ async def sim_position_detail(position_id: int):
 
 @router.post("/sim/analyze/{coin}")
 async def sim_analyze(coin: str):
-    """Run 4-step deep analysis for a coin."""
+    """Run 9-dimension comprehensive analysis for a coin."""
     coin = coin.upper()
     result = await run_full_analysis(coin)
     if "error" in result:

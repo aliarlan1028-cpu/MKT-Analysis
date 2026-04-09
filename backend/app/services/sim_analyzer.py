@@ -1,13 +1,13 @@
-"""SimAnalyzer — Gemini 4-step deep analysis for sim trading.
+"""SimAnalyzer — 9-dimension comprehensive analysis engine.
 
-Step 1: Fundamental scan — what is this coin?
-Step 2: Strategy selection — what's the best analytical approach?
-Step 3: Deep analysis — execute with dynamic factors
-Step 4: Trade decision — entry, SL, TP, direction
+Call 1: Token Economics + News & Catalyst (with Google Search)
+Call 2: Technical Analysis (with kline data)
+Call 3: On-Chain + Macro + Whale + Sentiment + Liquidity (with Google Search)
+Call 4: Executive Summary + Trading Decision (synthesizing all)
 """
 
 import json
-import traceback
+import re
 from datetime import datetime, timezone, timedelta
 from google import genai
 from google.genai import types
@@ -17,31 +17,24 @@ from app.services.market_data import _okx_get
 _BEIJING_TZ = timezone(timedelta(hours=8))
 
 
-async def _gemini_call(prompt: str, system: str = None) -> str:
+async def _gemini_call(prompt: str) -> str:
     """Call Gemini 2.5 Flash with Google Search grounding."""
     api_key = settings.get_next_gemini_key()
     client = genai.Client(api_key=api_key)
     google_search_tool = types.Tool(google_search=types.GoogleSearch())
-
-    contents = prompt
     config = types.GenerateContentConfig(
         tools=[google_search_tool],
-        temperature=0.7,
+        temperature=0.5,
         max_output_tokens=16384,
     )
-    if system:
-        config.system_instruction = system
-
     response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=contents,
-        config=config,
+        model=settings.GEMINI_MODEL, contents=prompt, config=config,
     )
     return response.text or ""
 
 
 def _parse_json(text: str) -> dict:
-    """Extract JSON from AI response."""
+    """Extract JSON from AI response (robust)."""
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1]
@@ -53,274 +46,233 @@ def _parse_json(text: str) -> dict:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        first = text.find("{")
-        last = text.rfind("}")
-        if first != -1 and last > first:
-            try:
-                return json.loads(text[first:last + 1])
-            except json.JSONDecodeError:
-                pass
-        import re
-        cleaned = text[first:last + 1] if first != -1 else text
-        cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)
-        return json.loads(cleaned)
+        pass
+    first = text.find("{")
+    last = text.rfind("}")
+    if first != -1 and last > first:
+        try:
+            return json.loads(text[first:last + 1])
+        except json.JSONDecodeError:
+            cleaned = re.sub(r',\s*([}\]])', r'\1', text[first:last + 1])
+            return json.loads(cleaned)
+    raise ValueError(f"Cannot parse JSON from: {text[:200]}")
 
 
 async def _fetch_coin_data(coin: str) -> dict:
-    """Fetch comprehensive OKX data for analysis."""
+    """Fetch comprehensive OKX data for analysis — multi-timeframe."""
     swap_id = f"{coin}-USDT-SWAP"
+    data: dict = {"coin": coin}
 
     # Ticker
-    ticker = {}
     body = await _okx_get("/api/v5/market/ticker", {"instId": swap_id})
     if body and body.get("data"):
         t = body["data"][0]
-        ticker = {
-            "price": float(t["last"]),
-            "open24h": float(t.get("open24h", 0)),
-            "high24h": float(t.get("high24h", 0)),
-            "low24h": float(t.get("low24h", 0)),
+        data["ticker"] = {
+            "price": float(t["last"]), "open24h": float(t.get("open24h", 0)),
+            "high24h": float(t.get("high24h", 0)), "low24h": float(t.get("low24h", 0)),
             "vol24h": float(t.get("volCcy24h", 0)),
         }
-        ticker["change24h_pct"] = round((ticker["price"] - ticker["open24h"]) / ticker["open24h"] * 100, 2) if ticker["open24h"] else 0
+        o = data["ticker"]["open24h"]
+        data["ticker"]["change24h_pct"] = round((data["ticker"]["price"] - o) / o * 100, 2) if o else 0
+    else:
+        data["ticker"] = {}
 
     # Funding rate
-    funding = None
     try:
         fr = await _okx_get("/api/v5/public/funding-rate", {"instId": swap_id})
-        if fr and fr["data"]:
-            funding = float(fr["data"][0]["fundingRate"])
+        data["funding_rate"] = float(fr["data"][0]["fundingRate"]) if fr and fr.get("data") else None
     except Exception:
-        pass
-
-    # Klines (4H, last 100)
-    klines_4h = []
-    try:
-        kb = await _okx_get("/api/v5/market/candles", {"instId": swap_id, "bar": "4H", "limit": "100"})
-        if kb and kb["data"]:
-            for k in kb["data"][:50]:  # last 50 candles
-                klines_4h.append({"t": k[0], "o": k[1], "h": k[2], "l": k[3], "c": k[4], "v": k[5]})
-    except Exception:
-        pass
+        data["funding_rate"] = None
 
     # Open interest
-    oi = None
     try:
         oib = await _okx_get("/api/v5/public/open-interest", {"instType": "SWAP", "instId": swap_id})
-        if oib and oib["data"]:
-            oi = float(oib["data"][0].get("oiCcy", 0))
+        data["open_interest"] = float(oib["data"][0].get("oiCcy", 0)) if oib and oib.get("data") else None
     except Exception:
-        pass
+        data["open_interest"] = None
 
-    return {
-        "coin": coin,
-        "ticker": ticker,
-        "funding_rate": funding,
-        "klines_4h_count": len(klines_4h),
-        "klines_4h_summary": _summarize_klines(klines_4h) if klines_4h else "无数据",
-        "open_interest": oi,
-    }
+    # Multi-timeframe klines
+    for tf, label in [("1H", "klines_1h"), ("4H", "klines_4h"), ("1D", "klines_1d")]:
+        try:
+            kb = await _okx_get("/api/v5/market/candles", {"instId": swap_id, "bar": tf, "limit": "100"})
+            lines = []
+            if kb and kb.get("data"):
+                for k in kb["data"][:50]:
+                    lines.append(f"{k[0]}|O:{k[1]}|H:{k[2]}|L:{k[3]}|C:{k[4]}|V:{k[5]}")
+            data[label] = "\n".join(lines) if lines else "无数据"
+        except Exception:
+            data[label] = "无数据"
 
-
-def _summarize_klines(klines: list) -> str:
-    """Create a text summary of kline data for the prompt."""
-    if not klines:
-        return "无K线数据"
-    lines = []
-    for k in klines[:30]:
-        lines.append(f"O:{k['o']} H:{k['h']} L:{k['l']} C:{k['c']} V:{k['v']}")
+    return data
 
 
-# ═══════════════════════════════════════════
-#  STEP 1: FUNDAMENTAL SCAN
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+#  CALL 1: Token Economics + News/Catalyst (dimensions 1-2)
+# ═══════════════════════════════════════════════════════
 
-async def step1_fundamental_scan(coin: str, market_data: dict) -> dict:
-    """What is this coin? Project, recent events, narrative."""
+async def call1_economics_news(coin: str, md: dict) -> dict:
+    price = md["ticker"].get("price", "N/A")
     prompt = (
-        f"你是一位资深加密货币研究员。请对 {coin} 进行基本面扫描。\n\n"
-        f"当前价格: ${market_data['ticker'].get('price', 'N/A')}\n"
-        f"24h涨跌: {market_data['ticker'].get('change24h_pct', 'N/A')}%\n"
-        f"资金费率: {market_data.get('funding_rate', 'N/A')}\n\n"
-        "请搜索最新信息并回答：\n"
-        "1. 这个项目是什么？属于什么赛道？\n"
-        "2. 项目当前阶段（早期/成长/成熟/衰退/炒作期）？\n"
-        "3. 近期重大事件（融资、合作、上架、解锁、技术升级等）？\n"
-        "4. 社区热度来源：是 FOMO 炒作、庄家拉盘、还是真实增长？\n"
-        "5. 当前价格是否有基本面支撑？\n\n"
-        "严格按以下JSON格式返回（不要markdown代码块）：\n"
-        '{"project_summary":"项目简介","sector":"赛道","stage":"当前阶段",'
-        '"recent_events":["事件1","事件2"],'
-        '"hype_source":"热度来源分析",'
-        '"fundamental_support":"基本面是否支撑当前价格的判断",'
-        '"conclusion":"总结性判断"}'
+        f"你是顶级加密货币研究分析师。请对 {coin} 进行以下两个维度的深度分析。\n"
+        f"当前价格: ${price} | 24h涨跌: {md['ticker'].get('change24h_pct','N/A')}%\n\n"
+        "=== 维度1: 代币经济学 ===\n"
+        "搜索并提供：总发行量、流通量、当前市值、FDV、24h成交量、换手率、24h量比、"
+        "赛道/叙事定位、代币经济学（解锁计划、通胀率、质押率等）。\n"
+        "标注高风险点（大额解锁临近、流通率低、FDV/市值比过高等）。\n\n"
+        "=== 维度2: 信息面/基本面 ===\n"
+        "搜索最近7-30天关键新闻，按利好/利空分类：\n"
+        "- 赛道整体利好/利空\n- 项目自身催化剂\n- 负面信息\n"
+        "每条新闻评估影响强度(强/中/弱)。\n\n"
+        "严格按JSON返回（不要markdown代码块）：\n"
+        '{"token_economics":{"total_supply":"","circulating_supply":"","market_cap":"","fdv":"","volume_24h":"","turnover_rate":"","volume_ratio_24h":"","sector":"","token_model":"代币经济学描述","risk_flags":["风险点1"]},'
+        '"news_catalyst":{"bullish_news":[{"event":"","impact":"强/中/弱","detail":""}],"bearish_news":[{"event":"","impact":"强/中/弱","detail":""}],"catalyst_strength":"整体催化剂强度评估","narrative_position":"当前叙事位置"}}'
     )
-    raw = await _gemini_call(prompt)
-    return _parse_json(raw)
+    return _parse_json(await _gemini_call(prompt))
 
 
-# ═══════════════════════════════════════════
-#  STEP 2: STRATEGY SELECTION
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+#  CALL 2: Technical Analysis (dimension 3) — with kline data
+# ═══════════════════════════════════════════════════════
 
-async def step2_strategy_selection(coin: str, step1_result: dict, market_data: dict) -> dict:
-    """Based on Step 1, determine the best analytical approach."""
+async def call2_technical(coin: str, md: dict) -> dict:
+    price = md["ticker"].get("price", "N/A")
     prompt = (
-        f"你是一位资深加密货币交易策略师。基于以下对 {coin} 的基本面扫描结果，\n"
-        f"请确定最适合分析这个币种的方法论。\n\n"
-        f"=== 基本面扫描结果 ===\n{json.dumps(step1_result, ensure_ascii=False, indent=2)}\n\n"
-        f"当前价格: ${market_data['ticker'].get('price', 'N/A')}\n"
-        f"资金费率: {market_data.get('funding_rate', 'N/A')}\n"
-        f"未平仓量: {market_data.get('open_interest', 'N/A')}\n\n"
-        "不要使用千篇一律的 RSI+MACD 分析。根据这个币的特性选择最优方法：\n"
-        "- 如果是 meme 币：重点看链上数据、社区情绪、巨鲸动向\n"
-        "- 如果是 L1/L2：重点看 TVL 趋势、开发活跃度、生态增长\n"
-        "- 如果是 DeFi：重点看协议收入、锁仓量变化、代币经济模型\n"
-        "- 如果是新币/炒作期：重点看庄家行为、筹码分布、拉盘模式\n"
-        "- 其他情况：根据实际情况自行判断最优方法\n\n"
-        "严格按以下JSON格式返回：\n"
-        '{"coin_type":"币种类型判断",'
-        '"recommended_methods":["方法1描述","方法2描述","方法3描述"],'
-        '"key_metrics_to_watch":["关键指标1","关键指标2"],'
-        '"analysis_framework":"整体分析框架描述",'
-        '"risk_focus":"该币种需要特别关注的风险点"}'
+        f"你是顶级合约技术分析师。请对 {coin} (当前${price}) 进行全面技术分析。\n\n"
+        f"=== 1H K线(最近50根) ===\n{md.get('klines_1h','无数据')}\n\n"
+        f"=== 4H K线(最近50根) ===\n{md.get('klines_4h','无数据')}\n\n"
+        f"=== 日线K线(最近50根) ===\n{md.get('klines_1d','无数据')}\n\n"
+        f"资金费率: {md.get('funding_rate','N/A')} | 未平仓量: {md.get('open_interest','N/A')}\n\n"
+        "请按以下子项逐一分析（基于真实K线数据计算）：\n"
+        "1. 市场结构: HH/HL vs LH/LL序列，BOS/CHOCH判断\n"
+        "2. K线形态: 反转形态(射击之星/锤头/吞没/晨星晚星)和持续形态\n"
+        "3. 趋势与MA: EMA20/50/100/200关系，金叉/死叉，EMA对齐\n"
+        "4. 动量指标: RSI(超买超卖+背离)，MACD(交叉+柱状线背离)，CCI\n"
+        "5. 波动率: Bollinger Bands(Squeeze/突破)，ATR值，Keltner\n"
+        "6. 量价关系: OBV趋势，量价背离，VWAP位置，Volume Profile关键节点\n"
+        "7. 高级指标: Ichimoku云层，Supertrend，Fibonacci关键位，ADX趋势强度\n"
+        "8. 多时间框架共振: 日线/4H/1H信号是否一致\n"
+        "9. 触顶/触底判断: 综合RSI+量价背离+BB+结构破位+K线形态，给出明确判断\n"
+        "10. Pump&Dump检测: 价格偏离20日EWMA程度，异常量能\n\n"
+        "严格按JSON返回：\n"
+        '{"market_structure":{"trend":"上升/下降/震荡","hh_hl_or_lh_ll":"描述","bos_choch":"结构破位情况"},'
+        '"candlestick_patterns":["识别到的形态及位置"],'
+        '"trend_ma":{"ema20":"价格vs EMA20关系","ema50":"","ema200":"","alignment":"EMA对齐情况","golden_death_cross":""},'
+        '"momentum":{"rsi_14":"数值+状态","rsi_divergence":"是否背离","macd":"状态","macd_divergence":"","cci":"","adx":"趋势强度"},'
+        '"volatility":{"bollinger":"位置+Squeeze状态","atr":"数值+含义","keltner":""},'
+        '"volume_analysis":{"obv_trend":"","volume_price_divergence":"是否量价背离","vwap":"当前价vs VWAP","volume_profile_key_levels":"高成交量节点"},'
+        '"advanced":{"ichimoku":"云层位置+信号","supertrend":"信号","fibonacci_levels":"关键回撤/扩展位","adx_value":""},'
+        '"multi_timeframe":{"daily":"日线信号","four_hour":"4H信号","one_hour":"1H信号","confluence":"是否共振"},'
+        '"top_bottom":{"verdict":"当前处于触顶/震荡/触底/拉升阶段","signals_present":["已出现的信号"],"signals_missing":["还缺的确认信号"],"pump_dump_stage":"Pump&Dump阶段评估"},'
+        '"key_levels":{"support":[0.0],"resistance":[0.0]},'
+        '"factors":[{"description":"具体技术因子","bias":"看多/看空/中性"}]}'
     )
-    raw = await _gemini_call(prompt)
-    return _parse_json(raw)
+    return _parse_json(await _gemini_call(prompt))
 
 
-# ═══════════════════════════════════════════
-#  STEP 3: DEEP ANALYSIS WITH DYNAMIC FACTORS
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+#  CALL 3: On-Chain + Macro + Whale + Sentiment + Liquidity (dimensions 4-8)
+# ═══════════════════════════════════════════════════════
 
-async def step3_deep_analysis(coin: str, step1: dict, step2: dict, market_data: dict) -> dict:
-    """Execute deep analysis using the selected strategy, generate dynamic factors."""
-    klines_text = market_data.get("klines_4h_summary", "无数据")
+async def call3_onchain_macro_sentiment(coin: str, md: dict) -> dict:
+    price = md["ticker"].get("price", "N/A")
     prompt = (
-        f"你是一位顶级加密货币合约交易分析师。请对 {coin} 进行深度行情分析。\n\n"
-        f"=== 基本面 ===\n{json.dumps(step1, ensure_ascii=False, indent=2)}\n\n"
-        f"=== 分析策略 ===\n{json.dumps(step2, ensure_ascii=False, indent=2)}\n\n"
-        f"=== 市场数据 ===\n"
-        f"当前价格: ${market_data['ticker'].get('price', 'N/A')}\n"
-        f"24h涨跌: {market_data['ticker'].get('change24h_pct', 'N/A')}%\n"
-        f"24h最高: ${market_data['ticker'].get('high24h', 'N/A')}\n"
-        f"24h最低: ${market_data['ticker'].get('low24h', 'N/A')}\n"
-        f"资金费率: {market_data.get('funding_rate', 'N/A')}\n"
-        f"未平仓量: {market_data.get('open_interest', 'N/A')}\n\n"
-        f"=== 4H K线数据 (最近30根) ===\n{klines_text}\n\n"
-        "请按照上面选定的分析策略进行深度分析，并生成动态因子列表。\n"
-        "每个因子是你在分析中发现的一个具体事实或判断，不是固定分类。\n"
-        "因子内容应该是具体的、可回溯验证的。\n\n"
-        "同时必须分析以下维度：\n"
-        "1. 是否触顶/触底？\n"
-        "2. 是否有庄家出货/吸筹迹象？\n"
-        "3. 是否存在真实催化剂？还是纯 FOMO/社区炒作？\n"
-        "4. 急速回调/拉升风险？\n"
-        "5. 基本面是否支撑当前价格？\n\n"
-        "严格按以下JSON格式返回：\n"
-        '{"overall_bias":"看多/看空/中性",'
-        '"confidence":72,'
-        '"factors":['
-        '{"description":"具体因子描述，例如：4H级别价格走高但OBV持续走平，资金并未真正流入","bias":"看多/看空/中性"},'
-        '{"description":"另一个因子","bias":"看多/看空/中性"}'
-        '],'
-        '"top_bottom_analysis":"触顶/触底分析",'
-        '"market_maker_analysis":"庄家行为分析",'
-        '"catalyst_analysis":"催化剂真实性分析",'
-        '"pullback_risk":"急速回调/拉升风险评估",'
-        '"price_support":"基本面是否支撑价格",'
-        '"bullish_factors":["利好因素1","利好因素2"],'
-        '"bearish_factors":["利空因素1","利空因素2"],'
-        '"key_levels":{"support":[价格1,价格2],"resistance":[价格1,价格2]}}'
+        f"你是顶级加密货币链上分析师和宏观策略师。请对 {coin} (${price}) 进行以下5个维度分析。\n\n"
+        "=== 维度4: 链上数据 ===\n"
+        "搜索：鲸鱼/大户交易所流入流出、MVRV Z-Score、NVT Ratio、SOPR、开发者/团队钱包活动。\n"
+        "判断'聪明钱'行为（积累/分发/观望）。\n\n"
+        "=== 维度5: 宏观市场 ===\n"
+        "BTC Dominance趋势、Altcoin Season Index、Fear & Greed Index、整体市场阶段、"
+        "全球宏观影响（利率/监管/地缘政治）。\n\n"
+        "=== 维度6: 庄家/大户操纵 ===\n"
+        "异常操作检测、筹码集中度(Top地址持有比例)、散户分布、"
+        "拉盘所需资金估算、刷量(Wash Trading)评估（CEX量vs链上Tx、唯一钱包数异常）。\n\n"
+        "=== 维度7: 情绪面 ===\n"
+        "社交媒体热度(X/Telegram/Reddit)、看涨/看空比例、FOMO/恐慌程度。\n\n"
+        "=== 维度8: 流动性与风险 ===\n"
+        "订单簿深度/滑点风险、CEX vs DEX分布、永续合约资金费率影响、"
+        "主要风险点（Rug Pull/监管/解锁/黑天鹅/流动性枯竭）。\n\n"
+        "严格按JSON返回：\n"
+        '{"onchain":{"whale_flow":"鲸鱼流向","mvrv":"","nvt":"","sopr":"","team_wallet":"","smart_money_verdict":"积累/分发/观望"},'
+        '"macro":{"btc_dominance":"","altcoin_season":"","fear_greed":"","market_phase":"牛市/熊市/震荡","global_macro":""},'
+        '"whale_manipulation":{"abnormal_activity":"","chip_concentration":"Top地址持有%","retail_distribution":"","pump_cost_estimate":"","wash_trading_risk":"低/中/高","wash_evidence":""},'
+        '"sentiment":{"social_heat":"","bull_bear_ratio":"","fomo_level":"","overall":""},'
+        '"liquidity_risk":{"orderbook_depth":"","slippage_risk":"","cex_dex_ratio":"","funding_rate_impact":"","major_risks":["风险1"],"risk_level":"低/中/高"}}'
     )
-    raw = await _gemini_call(prompt)
-    return _parse_json(raw)
+    return _parse_json(await _gemini_call(prompt))
 
 
-# ═══════════════════════════════════════════
-#  STEP 4: TRADE DECISION
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+#  CALL 4: Executive Summary + Trading Decision (dimension 9)
+# ═══════════════════════════════════════════════════════
 
-async def step4_trade_decision(coin: str, step3: dict, market_data: dict) -> dict:
-    """Final trade decision with entry, SL, TP."""
-    price = market_data['ticker'].get('price', 0)
+async def call4_summary_decision(coin: str, md: dict, c1: dict, c2: dict, c3: dict) -> dict:
+    price = md["ticker"].get("price", 0)
     prompt = (
-        f"你是一位顶级合约交易员。基于以下对 {coin} 的深度分析，做出交易决策。\n\n"
-        f"=== 深度分析结果 ===\n{json.dumps(step3, ensure_ascii=False, indent=2)}\n\n"
-        f"当前价格: ${price}\n"
-        f"交易条件: 10x杠杆，永续合约\n\n"
-        "请给出精确的交易决策：\n"
-        "- 如果不建议交易（风险过高/信号不明确），direction 填 NONE\n"
-        "- 入场价要合理：做多时入场价应 ≤ 当前价格（等回调），做空时 ≥ 当前价格（等反弹）\n"
-        "- 止损要明确且合理（10x杠杆下不超过保证金的30%）\n"
-        "- 止盈分两档\n\n"
-        "严格按以下JSON格式返回：\n"
-        '{"direction":"LONG/SHORT/NONE",'
-        '"confidence":72,'
-        '"reasoning":"交易逻辑简述",'
-        f'"entry_price":{price},'
-        f'"stop_loss":{price * 0.97},'
-        f'"take_profit_1":{price * 1.05},'
-        f'"take_profit_2":{price * 1.10},'
-        '"risk_assessment":"风险评估",'
-        '"key_invalidation":"什么情况下这个判断会失效"}'
+        f"你是顶级合约交易决策者。基于以下对 {coin} (${price}) 的9维分析结果，给出最终判断和交易决策。\n\n"
+        f"=== 代币经济学+新闻 ===\n{json.dumps(c1, ensure_ascii=False)[:3000]}\n\n"
+        f"=== 技术面分析 ===\n{json.dumps(c2, ensure_ascii=False)[:3000]}\n\n"
+        f"=== 链上+宏观+情绪+流动性 ===\n{json.dumps(c3, ensure_ascii=False)[:3000]}\n\n"
+        "请提供：\n"
+        "1. 执行摘要：一句话核心结论 + 短期走势概率(涨/跌/震荡)\n"
+        "2. 多维度共振判断：Pump&Dump阶段评估\n"
+        "3. 触顶/触底信号确认：已出现哪些，还缺哪些\n"
+        "4. 交易决策：方向、入场价、止盈1/2、止损、仓位建议\n"
+        "   - 10x杠杆永续合约\n"
+        "   - 做多入场价≤当前价(等回调)，做空≥当前价(等反弹)\n"
+        "   - 止损不超过保证金30%\n"
+        "   - 不建议交易则direction=NONE\n"
+        "5. 关键观察指标警报\n\n"
+        "严格按JSON返回：\n"
+        '{"executive_summary":{"core_conclusion":"一句话结论","probability":{"up":30,"down":40,"sideways":30},"recommended_action":"观察/减仓/加仓/空仓"},'
+        '"multi_dimension_confluence":{"pump_dump_stage":"早期Pump/高位Pump/Dump进行中/触底反弹/无明显信号","confluence_signals":["共振信号1"]},'
+        '"top_bottom_confirmation":{"signals_present":["已出现信号"],"signals_missing":["缺少的确认"],"verdict":"判断"},'
+        '"trade_decision":{"direction":"LONG/SHORT/NONE","confidence":72,"reasoning":"逻辑",'
+        f'"entry_price":{price},"stop_loss":{price*0.97},"take_profit_1":{price*1.05},"take_profit_2":{price*1.10},'
+        '"position_size_pct":100,"risk_assessment":"风险评估","key_invalidation":"失效条件"},'
+        '"alert_indicators":["需要关注的指标1"],'
+        '"factors":[{"description":"综合因子","bias":"看多/看空/中性"}]}'
     )
-    raw = await _gemini_call(prompt)
-    return _parse_json(raw)
+    return _parse_json(await _gemini_call(prompt))
 
 
-# ═══════════════════════════════════════════
-#  FULL 4-STEP ANALYSIS
-# ═══════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+#  MAIN ENTRY: run_full_analysis
+# ═══════════════════════════════════════════════════════
 
 async def run_full_analysis(coin: str) -> dict:
-    """Run complete 4-step analysis for a coin."""
-    print(f"  🔬 SimAnalyzer: Starting 4-step analysis for {coin}...")
-
-    # Fetch data
-    market_data = await _fetch_coin_data(coin)
-    if not market_data.get("ticker", {}).get("price"):
+    """Run 9-dimension comprehensive analysis (4 Gemini calls)."""
+    print(f"  🔬 SimAnalyzer: 9维分析 {coin}...")
+    md = await _fetch_coin_data(coin)
+    if not md.get("ticker", {}).get("price"):
         return {"error": f"无法获取 {coin} 的市场数据"}
 
-    results = {"coin": coin, "timestamp": datetime.now(_BEIJING_TZ).isoformat(), "market_data": market_data}
+    results = {"coin": coin, "timestamp": datetime.now(_BEIJING_TZ).isoformat(), "market_data": md}
 
-    # Step 1
-    print(f"    Step 1: 基本面扫描...")
+    for label, func, args, key in [
+        ("代币经济学+新闻", call1_economics_news, (coin, md), "call1"),
+        ("技术面分析", call2_technical, (coin, md), "call2"),
+        ("链上+宏观+情绪", call3_onchain_macro_sentiment, (coin, md), "call3"),
+    ]:
+        print(f"    📊 {label}...")
+        try:
+            results[key] = await func(*args)
+        except Exception as e:
+            print(f"    ❌ {label} failed: {e}")
+            results[key] = {"error": str(e)}
+
+    # Call 4 needs results from 1-3
+    print(f"    📋 执行摘要+交易决策...")
     try:
-        results["step1"] = await step1_fundamental_scan(coin, market_data)
+        results["call4"] = await call4_summary_decision(
+            coin, md,
+            results.get("call1", {}), results.get("call2", {}), results.get("call3", {}),
+        )
     except Exception as e:
-        print(f"    ❌ Step 1 failed: {e}")
-        results["step1"] = {"error": str(e)}
-        return results
+        print(f"    ❌ 交易决策 failed: {e}")
+        results["call4"] = {"error": str(e)}
 
-    # Step 2
-    print(f"    Step 2: 分析策略选择...")
-    try:
-        results["step2"] = await step2_strategy_selection(coin, results["step1"], market_data)
-    except Exception as e:
-        print(f"    ❌ Step 2 failed: {e}")
-        results["step2"] = {"error": str(e)}
-        return results
-
-    # Step 3
-    print(f"    Step 3: 深度行情分析...")
-    try:
-        results["step3"] = await step3_deep_analysis(coin, results["step1"], results["step2"], market_data)
-    except Exception as e:
-        print(f"    ❌ Step 3 failed: {e}")
-        results["step3"] = {"error": str(e)}
-        return results
-
-    # Step 4
-    print(f"    Step 4: 交易决策...")
-    try:
-        results["step4"] = await step4_trade_decision(coin, results["step3"], market_data)
-    except Exception as e:
-        print(f"    ❌ Step 4 failed: {e}")
-        results["step4"] = {"error": str(e)}
-        return results
-
-    print(f"  ✅ SimAnalyzer: {coin} analysis complete — {results['step4'].get('direction', 'N/A')}")
+    direction = results.get("call4", {}).get("trade_decision", {}).get("direction", "N/A")
+    print(f"  ✅ SimAnalyzer: {coin} 完成 — {direction}")
     return results
 
 
@@ -329,16 +281,11 @@ async def run_full_analysis(coin: str) -> dict:
 # ═══════════════════════════════════════════
 
 async def analyze_volatility_event(coin: str, price: float, change_pct: float, position: dict) -> str:
-    """Analyze why a significant price move happened."""
     prompt = (
-        f"{coin} 在短时间内价格{'上涨' if change_pct > 0 else '下跌'}了 {abs(change_pct):.1f}%，"
-        f"当前价格 ${price}。\n\n"
-        f"持仓方向: {position['direction']} | 入场价: ${position['entry_price']}\n\n"
-        "请搜索最新信息，分析这次波动的原因：\n"
-        "1. 是什么触发了这次波动？（新闻/清算/BTC联动/技术面突破...）\n"
-        "2. 这次波动是否可持续？\n"
-        "3. 对当前持仓有什么影响？需要调整策略吗？\n\n"
-        "请用中文简洁回答（200字以内），不要JSON格式。"
+        f"{coin} 短时间内{'上涨' if change_pct > 0 else '下跌'} {abs(change_pct):.1f}%，现价 ${price}。\n"
+        f"持仓: {position['direction']} | 入场价: ${position['entry_price']}\n"
+        "请搜索最新信息分析：1.触发原因 2.是否可持续 3.对持仓影响\n"
+        "中文200字以内，不要JSON。"
     )
     try:
         return await _gemini_call(prompt)
@@ -347,56 +294,44 @@ async def analyze_volatility_event(coin: str, price: float, change_pct: float, p
 
 
 # ═══════════════════════════════════════════
-#  POST-TRADE FACTOR REVIEW
+#  POST-TRADE REVIEW (9-dimension based)
 # ═══════════════════════════════════════════
 
 async def review_trade_factors(position: dict, snapshots: list, events: list) -> dict:
-    """Post-trade analysis: review each factor with hindsight."""
     factors = position.get("factors", [])
     if not factors:
         return {"error": "没有因子数据"}
 
-    # Build price path summary
     price_path = ""
     if snapshots:
         prices = [s["price"] for s in snapshots]
         price_path = (
-            f"入场价: ${position['entry_price']} → "
-            f"MAE: ${position.get('mae_price', 'N/A')} ({position.get('mae', 0):+.1f}%) → "
-            f"MFE: ${position.get('mfe_price', 'N/A')} ({position.get('mfe', 0):+.1f}%) → "
-            f"平仓价: ${position['exit_price']} (最终: {position.get('pnl_pct', 0):+.1f}%)\n"
-            f"价格范围: ${min(prices):.6f} ~ ${max(prices):.6f} | 持仓时长: {len(snapshots)}分钟"
+            f"入场: ${position['entry_price']} → MAE: ${position.get('mae_price','N/A')} ({position.get('mae',0):+.1f}%) → "
+            f"MFE: ${position.get('mfe_price','N/A')} ({position.get('mfe',0):+.1f}%) → "
+            f"平仓: ${position['exit_price']} (最终: {position.get('pnl_pct',0):+.1f}%)\n"
+            f"价格: ${min(prices):.6f}~${max(prices):.6f} | 时长: {len(snapshots)}分钟"
         )
 
-    # Build events summary
-    events_text = ""
-    for ev in events:
-        events_text += f"[{ev['timestamp']}] {ev['event_type']}: ${ev['price']} {ev.get('ai_analysis', '')[:100]}\n"
-
-    factors_text = "\n".join([f"因子{i+1}: {f['description']} (判断: {f['bias']})" for i, f in enumerate(factors)])
+    events_text = "\n".join([f"[{e['timestamp'][:16]}] {e['event_type']}: ${e['price']} {(e.get('ai_analysis',''))[:100]}" for e in events])
+    factors_text = "\n".join([f"因子{i+1}: {f['description']} ({f['bias']})" for i, f in enumerate(factors)])
 
     prompt = (
-        f"你是一位交易复盘专家。请对以下 {position['coin']} 的交易进行深度因子归因分析。\n\n"
-        f"=== 交易概况 ===\n"
-        f"方向: {position['direction']} | 杠杆: {position['leverage']}x\n"
-        f"最终结果: {'盈利' if position.get('pnl', 0) > 0 else '亏损'} {position.get('pnl_pct', 0):+.1f}% (${position.get('pnl', 0):+.2f})\n\n"
+        f"你是交易复盘专家。请对 {position['coin']} 交易做9维深度复盘。\n\n"
+        f"方向: {position['direction']} {position['leverage']}x | "
+        f"结果: {'盈利' if position.get('pnl',0)>0 else '亏损'} {position.get('pnl_pct',0):+.1f}% (${position.get('pnl',0):+.2f})\n\n"
         f"=== 价格路径 ===\n{price_path}\n\n"
-        f"=== 波动事件 ===\n{events_text or '无重大波动事件'}\n\n"
-        f"=== 入场时的分析因子 ===\n{factors_text}\n\n"
-        "请逐一回溯每个因子，判断它是否有效，并追溯根源。\n"
-        "不是简单的对错，而是分析为什么对/为什么错的具体原因。\n\n"
-        "严格按以下JSON格式返回：\n"
-        '{"factor_reviews":['
-        '{"factor_index":1,"original":"因子原文","verdict":"✅有效/❌误判/⚠️部分有效",'
-        '"explanation":"具体解释为什么有效或误判，追溯到根源"}],'
-        '"core_correct_factor":"本次交易核心正确因素及原因",'
-        '"core_wrong_factor":"本次交易核心错误因素及原因",'
-        '"root_lesson":"根源教训（具体到方法论层面）",'
-        '"what_if":"如果重来，应该怎么做",'
-        '"reusable_rule":"从这笔交易提取的可复用规则"}'
+        f"=== 事件 ===\n{events_text or '无'}\n\n"
+        f"=== 入场因子 ===\n{factors_text}\n\n"
+        "请从9个维度逐一分析哪些判断正确、哪些错误，追溯根源：\n"
+        "1.代币经济学判断 2.新闻催化剂判断 3.技术面各指标判断 4.链上数据 "
+        "5.宏观判断 6.庄家行为 7.情绪面 8.流动性风险 9.综合决策\n\n"
+        "严格按JSON返回：\n"
+        '{"factor_reviews":[{"factor_index":1,"original":"","verdict":"✅有效/❌误判/⚠️部分有效","explanation":"根源分析"}],'
+        '"dimension_review":{"token_economics":"","news":"","technical":"","onchain":"","macro":"","whale":"","sentiment":"","liquidity":"","decision":""},'
+        '"core_correct_factor":"核心正确因素","core_wrong_factor":"核心错误因素",'
+        '"root_lesson":"根源教训","what_if":"如果重来","reusable_rule":"可复用规则"}'
     )
     try:
-        raw = await _gemini_call(prompt)
-        return _parse_json(raw)
+        return _parse_json(await _gemini_call(prompt))
     except Exception as e:
         return {"error": str(e)}
