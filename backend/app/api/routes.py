@@ -248,6 +248,11 @@ async def professional_dashboard():
 async def sim_account():
     return get_account()
 
+@router.get("/sim/analytics")
+async def sim_analytics():
+    """Get win rate statistics by coin and factor."""
+    from app.services.sim_trading import get_factor_analytics
+    return get_factor_analytics()
 
 @router.post("/sim/refund")
 async def sim_refund():

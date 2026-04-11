@@ -487,3 +487,91 @@ async def close_position_at_market(position_id: int) -> dict:
 
     _close_position_at(position_id, price, "MANUAL")
     return {"success": True, "message": f"已平仓 {pos['coin']} @ ${price}"}
+
+
+def get_factor_analytics():
+    """Analyze win rates by initial factors."""
+    conn = _get_db()
+
+    # Get all closed positions with factors
+    rows = conn.execute("""
+        SELECT direction, factors_json, pnl_pct
+        FROM sim_positions
+        WHERE status IN ('CLOSED', 'LIQUIDATED') AND factors_json IS NOT NULL
+    """).fetchall()
+
+    conn.close()
+
+    factor_stats = {} # factor_name -> {factor_value -> {total_trades, wins, losses, total_pnl_pct}}
+
+    for r in rows:
+        direction = r["direction"]
+        factors_str = r["factors_json"]
+        pnl_pct = r["pnl_pct"]
+
+        if not factors_str:
+            continue
+
+        try:
+            factors = json.loads(factors_str)
+        except json.JSONDecodeError:
+            continue
+
+        for factor_dict in factors:
+            factor_name = factor_dict.get("name")
+            factor_value = factor_dict.get("value")
+
+            if not factor_name or not factor_value:
+                continue
+
+            # Use a combined key for factor_name and direction
+            factor_key = f"{factor_name}__{direction}"
+
+            if factor_key not in factor_stats:
+                factor_stats[factor_key] = {}
+
+            if factor_value not in factor_stats[factor_key]:
+                factor_stats[factor_key][factor_value] = {
+                    "total_trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "total_pnl_pct": 0.0
+                }
+
+            stats = factor_stats[factor_key][factor_value]
+            stats["total_trades"] += 1
+            if pnl_pct > 0:
+                stats["wins"] += 1
+            else:
+                stats["losses"] += 1
+            stats["total_pnl_pct"] += pnl_pct
+
+    # Calculate win rates and average PnL
+    result = []
+    for factor_key, values in factor_stats.items():
+        factor_name, direction = factor_key.split("__")
+        for factor_value, stats in values.items():
+            total_trades = stats["total_trades"]
+            wins = stats["wins"]
+            losses = stats["losses"]
+            total_pnl_pct = stats["total_pnl_pct"]
+
+            win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+            avg_pnl_pct = (total_pnl_pct / total_trades) if total_trades > 0 else 0
+
+            result.append({
+                "factor_name": factor_name,
+                "factor_value": factor_value,
+                "direction": direction,
+                "total_trades": total_trades,
+                "wins": wins,
+                "losses": losses,
+                "win_rate": round(win_rate, 2),
+                "avg_pnl_pct": round(avg_pnl_pct, 2)
+            })
+
+    # Sort for better readability (optional)
+    result.sort(key=lambda x: (x["factor_name"], x["factor_value"], x["direction"]))
+
+    return result
+
