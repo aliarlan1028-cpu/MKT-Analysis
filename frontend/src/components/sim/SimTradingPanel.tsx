@@ -41,6 +41,23 @@ function Badge({ text, type }: { text: string; type: "green" | "red" | "yellow" 
   return <span className={`text-[10px] px-1.5 py-0.5 rounded ${c[type]}`}>{text}</span>;
 }
 
+/* ─── Indicator Card: visual metric card with big value + label + color ─── */
+function IndicatorCard({ label, value, summary, type = "neutral" }: { label: string; value: string; summary?: string; type?: "bullish" | "bearish" | "neutral" | "warning" }) {
+  const border = { bullish: "border-accent-green/40", bearish: "border-accent-red/40", neutral: "border-card-border", warning: "border-accent-yellow/40" };
+  const valueColor = { bullish: "text-accent-green", bearish: "text-accent-red", neutral: "text-white", warning: "text-accent-yellow" };
+  const dot = { bullish: "bg-accent-green", bearish: "bg-accent-red", neutral: "bg-white/30", warning: "bg-accent-yellow" };
+  return (
+    <div className={`bg-card-bg border ${border[type]} rounded-xl p-3 flex flex-col justify-between min-h-[90px]`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <div className={`w-2 h-2 rounded-full ${dot[type]}`} />
+        <span className="text-[10px] text-text-muted font-medium uppercase tracking-wide">{label}</span>
+      </div>
+      <div className={`text-lg font-bold font-mono leading-tight ${valueColor[type]}`}>{value}</div>
+      {summary && <p className="text-[10px] text-text-muted mt-1 leading-tight">{summary}</p>}
+    </div>
+  );
+}
+
 /* ─── Collapsible dimension section ─── */
 function DimSection({ title, icon, defaultOpen, children }: { title: string; icon: string; defaultOpen?: boolean; children: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen || false);
@@ -413,100 +430,54 @@ export default function SimTradingPanel() {
         {/* ═══ 5. 9-DIMENSION ANALYSIS ═══ */}
         {analysis && (
           <div className="space-y-2">
-            {/* ── 技术面 (standalone prominent section) ── */}
+            {/* ── 技术面分析 (visual indicator cards) ── */}
             {c2 && !c2.error && (
               <div className="bg-card-bg border border-card-border rounded-xl p-4">
                 <h3 className="text-sm font-bold mb-3">📐 技术面分析</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Market Structure */}
-                  {c2.market_structure && (
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <h4 className="text-[10px] text-text-muted mb-2">市场结构</h4>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge text={c2.market_structure.trend || "N/A"} type={c2.market_structure.trend?.includes("上") ? "green" : c2.market_structure.trend?.includes("下") ? "red" : "yellow"} />
-                        {c2.market_structure.bos_choch && <span className="text-xs">{c2.market_structure.bos_choch}</span>}
-                      </div>
-                      <p className="text-[11px] text-text-muted">{c2.market_structure.hh_hl_or_lh_ll}</p>
-                    </div>
-                  )}
-                  {/* Momentum Gauges */}
-                  {c2.momentum && (
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <h4 className="text-[10px] text-text-muted mb-2">动量指标</h4>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="flex justify-between"><span>RSI(14)</span><span className={`font-mono font-bold ${String(c2.momentum.rsi_14).includes("超买") ? "text-accent-red" : String(c2.momentum.rsi_14).includes("超卖") ? "text-accent-green" : ""}`}>{c2.momentum.rsi_14}</span></div>
-                        <div className="flex justify-between"><span>MACD</span><span className="font-mono">{c2.momentum.macd}</span></div>
-                        <div className="flex justify-between"><span>RSI背离</span><span className={`font-mono ${String(c2.momentum.rsi_divergence).includes("是") || String(c2.momentum.rsi_divergence).includes("背离") ? "text-accent-yellow font-bold" : ""}`}>{c2.momentum.rsi_divergence}</span></div>
-                        <div className="flex justify-between"><span>ADX</span><span className="font-mono">{c2.momentum.adx}</span></div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Volatility */}
-                  {c2.volatility && (
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <h4 className="text-[10px] text-text-muted mb-2">波动率</h4>
-                      <div className="text-xs space-y-1">
-                        <div className="flex justify-between"><span>Bollinger</span><span className="font-mono">{c2.volatility.bollinger}</span></div>
-                        <div className="flex justify-between"><span>ATR</span><span className="font-mono">{c2.volatility.atr}</span></div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Volume */}
-                  {c2.volume_analysis && (
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <h4 className="text-[10px] text-text-muted mb-2">量价分析</h4>
-                      <div className="text-xs space-y-1">
-                        <div className="flex justify-between"><span>OBV</span><span className="font-mono">{c2.volume_analysis.obv_trend}</span></div>
-                        <div className="flex justify-between"><span>量价背离</span><span className={`font-mono ${String(c2.volume_analysis.volume_price_divergence).includes("是") ? "text-accent-yellow font-bold" : ""}`}>{c2.volume_analysis.volume_price_divergence}</span></div>
-                        <div className="flex justify-between"><span>VWAP</span><span className="font-mono">{c2.volume_analysis.vwap}</span></div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Trend/MA */}
-                  {c2.trend_ma && (
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <h4 className="text-[10px] text-text-muted mb-2">趋势 & MA</h4>
-                      <div className="text-xs space-y-1">
-                        <div className="flex justify-between"><span>EMA对齐</span><span className="font-mono">{c2.trend_ma.alignment}</span></div>
-                        <div className="flex justify-between"><span>金叉/死叉</span><span className={`font-mono ${String(c2.trend_ma.golden_death_cross).includes("金叉") ? "text-accent-green" : String(c2.trend_ma.golden_death_cross).includes("死叉") ? "text-accent-red" : ""}`}>{c2.trend_ma.golden_death_cross}</span></div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Advanced */}
-                  {c2.advanced && (
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <h4 className="text-[10px] text-text-muted mb-2">高级指标</h4>
-                      <div className="text-xs space-y-1">
-                        {c2.advanced.ichimoku && <div className="flex justify-between"><span>Ichimoku</span><span className="font-mono">{c2.advanced.ichimoku}</span></div>}
-                        {c2.advanced.fibonacci_levels && <div className="flex justify-between"><span>Fibonacci</span><span className="font-mono">{c2.advanced.fibonacci_levels}</span></div>}
-                        {c2.advanced.supertrend && <div className="flex justify-between"><span>Supertrend</span><span className="font-mono">{c2.advanced.supertrend}</span></div>}
-                      </div>
-                    </div>
-                  )}
+                {/* Row 1: Core indicators */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  {c2.market_structure && <IndicatorCard label="市场结构" value={c2.market_structure.trend || "N/A"} summary={c2.market_structure.bos_choch} type={c2.market_structure.trend?.includes("上") ? "bullish" : c2.market_structure.trend?.includes("下") ? "bearish" : "neutral"} />}
+                  {c2.momentum && <IndicatorCard label="RSI (14)" value={String(c2.momentum.rsi_14 || "N/A").replace(/[^0-9.]/g, '') || c2.momentum.rsi_14} summary={c2.momentum.rsi_divergence ? `背离: ${c2.momentum.rsi_divergence}` : undefined} type={String(c2.momentum.rsi_14).includes("超买") ? "bearish" : String(c2.momentum.rsi_14).includes("超卖") ? "bullish" : "neutral"} />}
+                  {c2.momentum && <IndicatorCard label="MACD" value={String(c2.momentum.macd || "N/A")} summary={c2.momentum.macd_divergence} type={String(c2.momentum.macd).includes("金叉") || String(c2.momentum.macd).includes("多") ? "bullish" : String(c2.momentum.macd).includes("死叉") || String(c2.momentum.macd).includes("空") ? "bearish" : "neutral"} />}
+                  {c2.momentum && <IndicatorCard label="ADX 趋势强度" value={String(c2.momentum.adx || "N/A")} type={String(c2.momentum.adx).includes(">25") || String(c2.momentum.adx).includes("强") ? "warning" : "neutral"} />}
+                </div>
+                {/* Row 2: Volatility + Volume */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  {c2.volatility && <IndicatorCard label="Bollinger Bands" value={String(c2.volatility.bollinger || "N/A")} summary={String(c2.volatility.bollinger).includes("Squeeze") ? "⚡ Squeeze → 大波动预警" : undefined} type={String(c2.volatility.bollinger).includes("上轨") ? "bearish" : String(c2.volatility.bollinger).includes("下轨") ? "bullish" : "neutral"} />}
+                  {c2.volatility && <IndicatorCard label="ATR 波动幅度" value={String(c2.volatility.atr || "N/A")} />}
+                  {c2.volume_analysis && <IndicatorCard label="OBV 趋势" value={String(c2.volume_analysis.obv_trend || "N/A")} type={String(c2.volume_analysis.obv_trend).includes("上") ? "bullish" : String(c2.volume_analysis.obv_trend).includes("下") ? "bearish" : "neutral"} />}
+                  {c2.volume_analysis && <IndicatorCard label="量价背离" value={String(c2.volume_analysis.volume_price_divergence || "无")} type={String(c2.volume_analysis.volume_price_divergence).includes("是") || String(c2.volume_analysis.volume_price_divergence).includes("背离") ? "warning" : "neutral"} />}
+                </div>
+                {/* Row 3: Trend + Advanced */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  {c2.trend_ma && <IndicatorCard label="EMA 对齐" value={String(c2.trend_ma.alignment || "N/A")} summary={c2.trend_ma.golden_death_cross} type={String(c2.trend_ma.golden_death_cross).includes("金叉") ? "bullish" : String(c2.trend_ma.golden_death_cross).includes("死叉") ? "bearish" : "neutral"} />}
+                  {c2.volume_analysis && <IndicatorCard label="VWAP" value={String(c2.volume_analysis.vwap || "N/A")} type={String(c2.volume_analysis.vwap).includes("上方") || String(c2.volume_analysis.vwap).includes("高于") ? "bullish" : String(c2.volume_analysis.vwap).includes("下方") || String(c2.volume_analysis.vwap).includes("低于") ? "bearish" : "neutral"} />}
+                  {c2.advanced?.ichimoku && <IndicatorCard label="Ichimoku 云" value={String(c2.advanced.ichimoku)} type={String(c2.advanced.ichimoku).includes("上方") || String(c2.advanced.ichimoku).includes("多") ? "bullish" : String(c2.advanced.ichimoku).includes("下方") || String(c2.advanced.ichimoku).includes("空") ? "bearish" : "neutral"} />}
+                  {c2.advanced?.fibonacci_levels && <IndicatorCard label="Fibonacci" value={String(c2.advanced.fibonacci_levels)} />}
                 </div>
                 {/* K-line patterns */}
                 {c2.candlestick_patterns && (
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    <span className="text-[10px] text-text-muted mr-1">K线形态:</span>
-                    {(Array.isArray(c2.candlestick_patterns) ? c2.candlestick_patterns : [String(c2.candlestick_patterns)]).map((p: string, i: number) => <Badge key={i} text={p} type="blue" />)}
+                  <div className="bg-white/5 rounded-lg p-3 mb-3">
+                    <span className="text-[10px] text-text-muted block mb-1.5">K线形态识别</span>
+                    <div className="flex flex-wrap gap-1.5">{(Array.isArray(c2.candlestick_patterns) ? c2.candlestick_patterns : [String(c2.candlestick_patterns)]).map((p: string, i: number) => <Badge key={i} text={p} type="blue" />)}</div>
                   </div>
                 )}
                 {/* Multi-timeframe */}
                 {c2.multi_timeframe && (
-                  <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
-                    <div className="bg-white/5 rounded p-2 text-center"><span className="text-[10px] text-text-muted block">日线</span>{c2.multi_timeframe.daily}</div>
-                    <div className="bg-white/5 rounded p-2 text-center"><span className="text-[10px] text-text-muted block">4H</span>{c2.multi_timeframe.four_hour}</div>
-                    <div className="bg-white/5 rounded p-2 text-center"><span className="text-[10px] text-text-muted block">1H</span>{c2.multi_timeframe.one_hour}</div>
-                    <div className={`rounded p-2 text-center ${String(c2.multi_timeframe.confluence).includes("是") ? "bg-accent-green/10" : "bg-white/5"}`}><span className="text-[10px] text-text-muted block">共振</span><span className="font-semibold">{c2.multi_timeframe.confluence}</span></div>
+                  <div className="grid grid-cols-4 gap-2 mb-3">
+                    {[["日线", c2.multi_timeframe.daily], ["4H", c2.multi_timeframe.four_hour], ["1H", c2.multi_timeframe.one_hour]].map(([tf, sig]) => (
+                      <IndicatorCard key={String(tf)} label={String(tf)} value={String(sig || "N/A")} type={String(sig).includes("多") || String(sig).includes("涨") ? "bullish" : String(sig).includes("空") || String(sig).includes("跌") ? "bearish" : "neutral"} />
+                    ))}
+                    <IndicatorCard label="共振" value={String(c2.multi_timeframe.confluence || "N/A")} type={String(c2.multi_timeframe.confluence).includes("是") || String(c2.multi_timeframe.confluence).includes("一致") ? "bullish" : "warning"} />
                   </div>
                 )}
                 {/* Top/Bottom verdict */}
                 {c2.top_bottom && (
-                  <div className={`mt-3 p-3 rounded-lg border ${String(c2.top_bottom.verdict).includes("顶") ? "border-accent-red/30 bg-accent-red/5" : String(c2.top_bottom.verdict).includes("底") ? "border-accent-green/30 bg-accent-green/5" : "border-accent-yellow/30 bg-accent-yellow/5"}`}>
-                    <div className="flex items-center gap-2 mb-2"><span className="text-sm font-bold">🔮 {c2.top_bottom.verdict}</span></div>
-                    {c2.top_bottom.signals_present?.length > 0 && <div className="flex flex-wrap gap-1 mb-1">{c2.top_bottom.signals_present.map((s: string, i: number) => <Badge key={i} text={`✅ ${s}`} type="green" />)}</div>}
-                    {c2.top_bottom.signals_missing?.length > 0 && <div className="flex flex-wrap gap-1">{c2.top_bottom.signals_missing.map((s: string, i: number) => <Badge key={i} text={`❓ ${s}`} type="yellow" />)}</div>}
-                    {c2.top_bottom.pump_dump_stage && <p className="text-xs text-text-muted mt-1">Pump&Dump: {c2.top_bottom.pump_dump_stage}</p>}
+                  <div className={`p-4 rounded-xl border-2 ${String(c2.top_bottom.verdict).includes("顶") ? "border-accent-red/50 bg-accent-red/5" : String(c2.top_bottom.verdict).includes("底") ? "border-accent-green/50 bg-accent-green/5" : "border-accent-yellow/50 bg-accent-yellow/5"}`}>
+                    <div className="text-base font-bold mb-2">🔮 {c2.top_bottom.verdict}</div>
+                    <div className="flex flex-wrap gap-1.5 mb-1">{c2.top_bottom.signals_present?.map((s: string, i: number) => <Badge key={i} text={`✅ ${s}`} type="green" />)}</div>
+                    <div className="flex flex-wrap gap-1.5">{c2.top_bottom.signals_missing?.map((s: string, i: number) => <Badge key={i} text={`❓ 缺: ${s}`} type="yellow" />)}</div>
+                    {c2.top_bottom.pump_dump_stage && <p className="text-xs text-text-muted mt-2">Pump&Dump阶段: {c2.top_bottom.pump_dump_stage}</p>}
                   </div>
                 )}
               </div>
@@ -558,43 +529,61 @@ export default function SimTradingPanel() {
               </DimSection>
             )}
 
-            {/* ── 链上 + 宏观 + 庄家 + 情绪 + 流动性 (compact grid) ── */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {c3?.onchain && (
-                <DimSection title="链上数据" icon="⛓️">
-                  <KV label="鲸鱼流向" value={c3.onchain.whale_flow} /><KV label="MVRV" value={c3.onchain.mvrv} /><KV label="NVT" value={c3.onchain.nvt} />
-                  <KV label="团队钱包" value={c3.onchain.team_wallet} />
-                  <KV label="聪明钱" value={c3.onchain.smart_money_verdict} color={c3.onchain.smart_money_verdict?.includes("积累") ? "text-accent-green font-bold" : c3.onchain.smart_money_verdict?.includes("分发") ? "text-accent-red font-bold" : ""} />
-                </DimSection>
-              )}
-              {c3?.macro && (
-                <DimSection title="宏观市场" icon="🌍">
-                  <KV label="BTC Dominance" value={c3.macro.btc_dominance} /><KV label="Altcoin Season" value={c3.macro.altcoin_season} />
-                  <KV label="Fear & Greed" value={c3.macro.fear_greed} /><KV label="市场阶段" value={c3.macro.market_phase} />
-                </DimSection>
-              )}
-              {c3?.whale_manipulation && (
-                <DimSection title="庄家/操纵" icon="🐋">
-                  <KV label="筹码集中度" value={c3.whale_manipulation.chip_concentration} /><KV label="拉盘成本" value={c3.whale_manipulation.pump_cost_estimate} />
-                  <KV label="刷量风险" value={c3.whale_manipulation.wash_trading_risk} color={c3.whale_manipulation.wash_trading_risk === "高" ? "text-accent-red font-bold" : ""} />
-                </DimSection>
-              )}
-              {c3?.sentiment && (
-                <DimSection title="情绪面" icon="📊">
-                  <KV label="社交热度" value={c3.sentiment.social_heat} /><KV label="多空比" value={c3.sentiment.bull_bear_ratio} />
-                  <KV label="FOMO" value={c3.sentiment.fomo_level} /><KV label="整体" value={c3.sentiment.overall} />
-                </DimSection>
-              )}
-            </div>
+            {/* ── 链上数据 (cards) ── */}
+            {c3?.onchain && (
+              <div className="bg-card-bg border border-card-border rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-3">⛓️ 链上数据</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                  <IndicatorCard label="MVRV" value={String(c3.onchain.mvrv || "N/A")} type={String(c3.onchain.mvrv).includes("高") ? "bearish" : String(c3.onchain.mvrv).includes("低") ? "bullish" : "neutral"} />
+                  <IndicatorCard label="聪明钱" value={String(c3.onchain.smart_money_verdict || "N/A")} type={String(c3.onchain.smart_money_verdict).includes("积累") ? "bullish" : String(c3.onchain.smart_money_verdict).includes("分发") ? "bearish" : "neutral"} />
+                  <IndicatorCard label="鲸鱼流向" value={String(c3.onchain.whale_flow || "N/A").slice(0, 20)} summary={String(c3.onchain.whale_flow || "").slice(20, 80)} type={String(c3.onchain.whale_flow).includes("流出") ? "bullish" : String(c3.onchain.whale_flow).includes("流入") ? "bearish" : "neutral"} />
+                  <IndicatorCard label="NVT" value={String(c3.onchain.nvt || "N/A")} />
+                </div>
+              </div>
+            )}
 
+            {/* ── 宏观市场 (cards) ── */}
+            {c3?.macro && (
+              <div className="bg-card-bg border border-card-border rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-3">🌍 宏观市场</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
+                  <IndicatorCard label="BTC Dominance" value={String(c3.macro.btc_dominance || "N/A").slice(0, 25)} type={String(c3.macro.btc_dominance).includes("上升") ? "bearish" : String(c3.macro.btc_dominance).includes("下降") ? "bullish" : "neutral"} />
+                  <IndicatorCard label="Altcoin Season" value={String(c3.macro.altcoin_season || "N/A").slice(0, 25)} type={String(c3.macro.altcoin_season).includes("山寨季") ? "bullish" : "neutral"} />
+                  <IndicatorCard label="Fear & Greed" value={String(c3.macro.fear_greed || "N/A").slice(0, 25)} type={String(c3.macro.fear_greed).includes("恐惧") || String(c3.macro.fear_greed).includes("恐慌") ? "bullish" : String(c3.macro.fear_greed).includes("贪婪") ? "bearish" : "neutral"} />
+                </div>
+                <p className="text-xs text-text-muted">市场阶段: {c3.macro.market_phase}</p>
+              </div>
+            )}
+
+            {/* ── 庄家/操纵 (single verdict card) ── */}
+            {c3?.whale_manipulation && (
+              <IndicatorCard label="🐋 庄家/操纵风险" value={String(c3.whale_manipulation.wash_trading_risk || "N/A")} summary={`筹码集中度: ${c3.whale_manipulation.chip_concentration || "N/A"} | 拉盘成本: ${c3.whale_manipulation.pump_cost_estimate || "N/A"}`} type={c3.whale_manipulation.wash_trading_risk === "高" ? "bearish" : c3.whale_manipulation.wash_trading_risk === "中" ? "warning" : "neutral"} />
+            )}
+
+            {/* ── 情绪面 (cards + summary) ── */}
+            {c3?.sentiment && (
+              <div className="bg-card-bg border border-card-border rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-3">📊 情绪面</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                  <IndicatorCard label="社交热度" value={String(c3.sentiment.social_heat || "N/A").slice(0, 15)} />
+                  <IndicatorCard label="多空比" value={String(c3.sentiment.bull_bear_ratio || "N/A").slice(0, 15)} type={String(c3.sentiment.bull_bear_ratio).includes("多") ? "bullish" : String(c3.sentiment.bull_bear_ratio).includes("空") ? "bearish" : "neutral"} />
+                  <IndicatorCard label="FOMO程度" value={String(c3.sentiment.fomo_level || "N/A").slice(0, 15)} type={String(c3.sentiment.fomo_level).includes("高") || String(c3.sentiment.fomo_level).includes("强") ? "warning" : "neutral"} />
+                  <IndicatorCard label="整体情绪" value={String(c3.sentiment.overall || "N/A").slice(0, 15)} type={String(c3.sentiment.overall).includes("乐观") || String(c3.sentiment.overall).includes("看涨") ? "bullish" : String(c3.sentiment.overall).includes("悲观") || String(c3.sentiment.overall).includes("看跌") ? "bearish" : "neutral"} />
+                </div>
+              </div>
+            )}
+
+            {/* ── 流动性与风险 (verdict card) ── */}
             {c3?.liquidity_risk && (
-              <DimSection title="流动性与风险" icon="💧">
-                <div className="flex flex-wrap gap-2 mb-2">
-                  <KV label="滑点风险" value={c3.liquidity_risk.slippage_risk} /><KV label="资金费率" value={c3.liquidity_risk.funding_rate_impact} />
-                  <KV label="风险等级" value={c3.liquidity_risk.risk_level} color={c3.liquidity_risk.risk_level === "高" ? "text-accent-red font-bold" : ""} />
+              <div className="bg-card-bg border border-card-border rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-3">💧 流动性与风险</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
+                  <IndicatorCard label="风险等级" value={String(c3.liquidity_risk.risk_level || "N/A")} type={c3.liquidity_risk.risk_level === "高" ? "bearish" : c3.liquidity_risk.risk_level === "中" ? "warning" : "neutral"} />
+                  <IndicatorCard label="滑点风险" value={String(c3.liquidity_risk.slippage_risk || "N/A").slice(0, 20)} />
+                  <IndicatorCard label="资金费率" value={String(c3.liquidity_risk.funding_rate_impact || "N/A").slice(0, 20)} type={String(c3.liquidity_risk.funding_rate_impact).includes("正") ? "warning" : "neutral"} />
                 </div>
                 {c3.liquidity_risk.major_risks?.length > 0 && <div className="flex flex-wrap gap-1">{c3.liquidity_risk.major_risks.map((r: string, i: number) => <Badge key={i} text={`⚠️ ${r}`} type="red" />)}</div>}
-              </DimSection>
+              </div>
             )}
 
             {c4?.alert_indicators?.length > 0 && (
@@ -610,108 +599,141 @@ export default function SimTradingPanel() {
         <div className="space-y-4">
           {closedPositions.length === 0 ? (
             <div className="bg-card-bg border border-card-border rounded-xl p-8 text-center text-text-muted">暂无历史交易</div>
-          ) : closedPositions.map(pos => (
-            <div key={pos.id} className="bg-card-bg border border-card-border rounded-xl p-4">
-              {/* Header with P&L */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
+          ) : closedPositions.map(pos => {
+            const rv = pos.factor_review as AnyObj | null;
+            const isProfit = (pos.pnl || 0) >= 0;
+            return (
+            <div key={pos.id} className="bg-card-bg border border-card-border rounded-xl overflow-hidden">
+              {/* Header bar */}
+              <div className={`flex items-center justify-between p-4 ${isProfit ? "bg-accent-green/5" : "bg-accent-red/5"}`}>
+                <div className="flex items-center gap-3">
                   <span className="font-bold text-lg">{pos.coin}/USDT</span>
                   <Badge text={`${pos.direction === "LONG" ? "做多" : "做空"} ${pos.leverage}x`} type={pos.direction === "LONG" ? "green" : "red"} />
                   {pos.status === "LIQUIDATED" && <Badge text="💥 爆仓" type="red" />}
                 </div>
-                <span className={`text-2xl font-bold font-mono ${(pos.pnl || 0) >= 0 ? "text-accent-green" : "text-accent-red"}`}>
-                  {(pos.pnl_pct || 0) >= 0 ? "+" : ""}{pos.pnl_pct?.toFixed(2)}%
-                  <span className="text-sm ml-1">(${pos.pnl?.toFixed(2)})</span>
+                <span className={`text-2xl font-bold font-mono ${isProfit ? "text-accent-green" : "text-accent-red"}`}>
+                  {isProfit ? "+" : ""}{pos.pnl_pct?.toFixed(2)}% <span className="text-sm">(${pos.pnl?.toFixed(2)})</span>
                 </span>
               </div>
 
-              {/* Stats grid */}
-              <div className="grid grid-cols-6 gap-3 text-xs mb-4">
+              {/* Stats */}
+              <div className="grid grid-cols-6 gap-2 p-4 text-xs">
                 {[["入场价", `$${pos.entry_price}`], ["平仓价", `$${pos.exit_price}`], ["保证金", `$${pos.margin?.toFixed(2)}`],
-                  ["MAE", `${pos.mae?.toFixed(2)}%`, "text-accent-red"], ["MFE", `+${pos.mfe?.toFixed(2)}%`, "text-accent-green"], ["开仓", pos.opened_at?.slice(5, 16) || "N/A"],
+                  ["MAE", `${pos.mae?.toFixed(2)}%`, "text-accent-red"], ["MFE", `+${pos.mfe?.toFixed(2)}%`, "text-accent-green"], ["持仓时间", pos.opened_at?.slice(5, 16) || "N/A"],
                 ].map(([l, v, c]) => <div key={String(l)} className="bg-white/5 rounded p-2"><span className="text-text-muted text-[10px] block">{l}</span><div className={`font-mono ${c || ""}`}>{v}</div></div>)}
               </div>
 
-              {/* Factor Review — Visual */}
-              {pos.factor_review ? (() => {
-                const rv = pos.factor_review as AnyObj;
-                const reviews = (rv.factor_reviews || []) as Array<{ factor_index: number; original: string; verdict: string; explanation: string }>;
-                const dimReview = rv.dimension_review as AnyObj | undefined;
-                return (
-                  <div className="space-y-3">
-                    {/* Quick verdict row */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {rv.core_correct_factor && (
-                        <div className="bg-accent-green/10 border border-accent-green/30 rounded-lg p-3">
-                          <span className="text-[10px] text-accent-green block mb-1">✅ 核心正确因素</span>
-                          <span className="text-xs font-medium">{String(rv.core_correct_factor)}</span>
+              {/* Review content */}
+              <div className="p-4 pt-0">
+                {rv ? (() => {
+                  const newsEvents = rv.news_review?.events as Array<{news: string; impact: string; effect: string}> | undefined;
+                  const techRv = rv.technical_review as AnyObj | undefined;
+                  const proOp = rv.professional_opinion as AnyObj | undefined;
+                  return (
+                    <div className="space-y-3">
+                      {/* ── 1. Accuracy Verdict (BIG) ── */}
+                      <div className={`p-4 rounded-xl border-2 text-center ${rv.accuracy_verdict === "准确" ? "border-accent-green/50 bg-accent-green/10" : rv.accuracy_verdict === "错误" ? "border-accent-red/50 bg-accent-red/10" : "border-accent-yellow/50 bg-accent-yellow/10"}`}>
+                        <div className="text-3xl font-bold mb-1">
+                          {rv.accuracy_verdict === "准确" ? "✅" : rv.accuracy_verdict === "错误" ? "❌" : "⚠️"} 分析{rv.accuracy_verdict || "待评估"}
                         </div>
-                      )}
-                      {rv.core_wrong_factor && (
-                        <div className="bg-accent-red/10 border border-accent-red/30 rounded-lg p-3">
-                          <span className="text-[10px] text-accent-red block mb-1">❌ 核心错误因素</span>
-                          <span className="text-xs font-medium">{String(rv.core_wrong_factor)}</span>
-                        </div>
-                      )}
-                      {rv.root_lesson && (
-                        <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-lg p-3">
-                          <span className="text-[10px] text-accent-blue block mb-1">📝 根源教训</span>
-                          <span className="text-xs font-medium">{String(rv.root_lesson)}</span>
-                        </div>
-                      )}
-                    </div>
-                    {/* Actionable row */}
-                    <div className="grid grid-cols-2 gap-2">
-                      {rv.what_if && (
-                        <div className="bg-accent-yellow/10 rounded-lg p-3">
-                          <span className="text-[10px] text-accent-yellow block mb-1">🔄 如果重来</span>
-                          <span className="text-xs">{String(rv.what_if)}</span>
-                        </div>
-                      )}
-                      {rv.reusable_rule && (
-                        <div className="bg-purple-500/10 rounded-lg p-3">
-                          <span className="text-[10px] text-purple-300 block mb-1">📌 可复用规则</span>
-                          <span className="text-xs">{String(rv.reusable_rule)}</span>
-                        </div>
-                      )}
-                    </div>
-                    {/* Dimension scores */}
-                    {dimReview && (
-                      <div className="bg-white/5 rounded-lg p-3">
-                        <h4 className="text-[10px] text-text-muted mb-2">各维度判断评估</h4>
-                        <div className="grid grid-cols-3 gap-1 text-[11px]">
-                          {Object.entries(dimReview).map(([k, v]) => (
-                            <div key={k} className="flex justify-between py-0.5 border-b border-white/5">
-                              <span className="text-text-muted">{k}</span>
-                              <span className={`${String(v).includes("正确") || String(v).includes("有效") ? "text-accent-green" : String(v).includes("错误") || String(v).includes("误判") ? "text-accent-red" : ""}`}>{String(v).slice(0, 40)}</span>
-                            </div>
-                          ))}
-                        </div>
+                        <div className="text-lg font-mono mb-2">准确率: <span className="font-bold">{rv.accuracy_score || "?"}/10</span></div>
+                        <p className="text-sm text-text-muted">{rv.accuracy_reason}</p>
                       </div>
-                    )}
-                    {/* Factor details (collapsible) */}
-                    {reviews.length > 0 && (
-                      <details><summary className="text-xs text-accent-blue cursor-pointer font-semibold">查看 {reviews.length} 个因子详细归因</summary>
-                        <div className="mt-2 space-y-1">
-                          {reviews.map((r, i) => (
-                            <div key={i} className={`p-2 rounded text-xs border ${r.verdict?.includes("✅") ? "border-accent-green/20 bg-accent-green/5" : r.verdict?.includes("❌") ? "border-accent-red/20 bg-accent-red/5" : "border-accent-yellow/20 bg-accent-yellow/5"}`}>
-                              <div className="font-medium">{r.verdict} 因子{r.factor_index}: {r.original}</div>
-                              <div className="text-text-muted mt-1">{r.explanation}</div>
+
+                      {/* ── 2. Why correct / wrong ── */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {rv.correct_factors?.length > 0 && (
+                          <div className="bg-accent-green/5 border border-accent-green/30 rounded-xl p-3">
+                            <h4 className="text-xs font-bold text-accent-green mb-2">✅ 分析正确的因素</h4>
+                            {rv.correct_factors.map((f: string, i: number) => (
+                              <div key={i} className="flex items-start gap-2 text-xs mb-1.5"><span className="text-accent-green mt-0.5">•</span><span>{f}</span></div>
+                            ))}
+                          </div>
+                        )}
+                        {rv.wrong_factors?.length > 0 && (
+                          <div className="bg-accent-red/5 border border-accent-red/30 rounded-xl p-3">
+                            <h4 className="text-xs font-bold text-accent-red mb-2">❌ 导致偏差的因素</h4>
+                            {rv.wrong_factors.map((f: string, i: number) => (
+                              <div key={i} className="flex items-start gap-2 text-xs mb-1.5"><span className="text-accent-red mt-0.5">•</span><span>{f}</span></div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── 3. Technical Review (cards) ── */}
+                      {techRv && (
+                        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+                          <h4 className="text-xs font-bold mb-2">📐 技术面实际表现</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {techRv.candlestick_patterns && <IndicatorCard label="K线形态" value={String(techRv.candlestick_patterns).slice(0, 30)} summary={String(techRv.candlestick_patterns).slice(30, 80)} />}
+                            {techRv.volume_price && <IndicatorCard label="量价关系" value={String(techRv.volume_price).slice(0, 25)} summary={String(techRv.volume_price).slice(25, 80)} type={String(techRv.volume_price).includes("背离") ? "warning" : "neutral"} />}
+                            {techRv.support_resistance && <IndicatorCard label="支撑阻力" value={String(techRv.support_resistance).slice(0, 25)} summary={String(techRv.support_resistance).slice(25, 80)} />}
+                            {techRv.key_indicators && <IndicatorCard label="关键指标" value={String(techRv.key_indicators).slice(0, 25)} summary={String(techRv.key_indicators).slice(25, 80)} />}
+                            {techRv.market_structure && <IndicatorCard label="市场结构" value={String(techRv.market_structure).slice(0, 25)} summary={String(techRv.market_structure).slice(25, 80)} />}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── 4. News Review ── */}
+                      {rv.news_review && (
+                        <div className="bg-card-bg border border-card-border rounded-xl p-3">
+                          <h4 className="text-xs font-bold mb-2">📰 信息面影响</h4>
+                          {newsEvents?.map((n, i: number) => (
+                            <div key={i} className={`flex items-start gap-2 text-xs mb-2 p-2 rounded ${n.impact === "利好" ? "bg-accent-green/5" : n.impact === "利空" ? "bg-accent-red/5" : "bg-white/5"}`}>
+                              <Badge text={n.impact} type={n.impact === "利好" ? "green" : n.impact === "利空" ? "red" : "yellow"} />
+                              <div><span className="font-medium">{n.news}</span><p className="text-text-muted mt-0.5">{n.effect}</p></div>
                             </div>
                           ))}
+                          {rv.news_review.overall && <p className="text-xs text-text-muted mt-1">{rv.news_review.overall}</p>}
                         </div>
-                      </details>
-                    )}
-                  </div>
-                );
-              })() : (
-                <button onClick={() => reviewPos(pos.id)} disabled={reviewing}
-                  className="px-4 py-2 bg-accent-blue/20 text-accent-blue rounded-lg text-sm font-semibold hover:bg-accent-blue/30 disabled:opacity-50">
-                  {reviewing ? "🔬 9维复盘中..." : "🔬 生成9维深度复盘"}
-                </button>
-              )}
+                      )}
+
+                      {/* ── 5. Professional Opinion ── */}
+                      {proOp && (
+                        <div className="bg-accent-blue/5 border border-accent-blue/30 rounded-xl p-3">
+                          <h4 className="text-xs font-bold text-accent-blue mb-2">🎯 专业交易员视角</h4>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {proOp.optimal_entry && <div className="bg-white/5 rounded p-2"><span className="text-text-muted text-[10px] block">最优入场</span>{proOp.optimal_entry}</div>}
+                            {proOp.optimal_exit && <div className="bg-white/5 rounded p-2"><span className="text-text-muted text-[10px] block">最优平仓</span>{proOp.optimal_exit}</div>}
+                            {proOp.position_management && <div className="bg-white/5 rounded p-2"><span className="text-text-muted text-[10px] block">仓位管理</span>{proOp.position_management}</div>}
+                            {proOp.what_i_would_do && <div className="bg-white/5 rounded p-2"><span className="text-text-muted text-[10px] block">我会怎么做</span>{proOp.what_i_would_do}</div>}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── 6. Lessons (cards) ── */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {rv.key_lesson && (
+                          <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-3">
+                            <span className="text-[10px] text-accent-blue block mb-1">📝 核心教训</span>
+                            <span className="text-xs font-medium">{String(rv.key_lesson)}</span>
+                          </div>
+                        )}
+                        {rv.what_if && (
+                          <div className="bg-accent-yellow/10 border border-accent-yellow/30 rounded-xl p-3">
+                            <span className="text-[10px] text-accent-yellow block mb-1">🔄 如果重来</span>
+                            <span className="text-xs">{String(rv.what_if)}</span>
+                          </div>
+                        )}
+                        {rv.reusable_rule && (
+                          <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-3">
+                            <span className="text-[10px] text-purple-300 block mb-1">📌 可复用规则</span>
+                            <span className="text-xs">{String(rv.reusable_rule)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <button onClick={() => reviewPos(pos.id)} disabled={reviewing}
+                    className="w-full px-4 py-3 bg-accent-blue/20 text-accent-blue rounded-xl text-sm font-semibold hover:bg-accent-blue/30 disabled:opacity-50">
+                    {reviewing ? "🔬 专业复盘分析中（约30秒）..." : "🔬 生成专业复盘分析"}
+                  </button>
+                )}
+              </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

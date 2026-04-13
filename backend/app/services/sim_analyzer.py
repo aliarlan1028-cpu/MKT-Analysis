@@ -298,38 +298,76 @@ async def analyze_volatility_event(coin: str, price: float, change_pct: float, p
 # ═══════════════════════════════════════════
 
 async def review_trade_factors(position: dict, snapshots: list, events: list) -> dict:
-    factors = position.get("factors", [])
-    if not factors:
-        return {"error": "没有因子数据"}
+    """Professional post-trade analysis using K-line data + news from entry to exit."""
+    coin = position.get("coin", "UNKNOWN")
 
+    # Build price path from snapshots
     price_path = ""
+    kline_summary = ""
     if snapshots:
         prices = [s["price"] for s in snapshots]
         price_path = (
-            f"入场: ${position['entry_price']} → MAE: ${position.get('mae_price','N/A')} ({position.get('mae',0):+.1f}%) → "
-            f"MFE: ${position.get('mfe_price','N/A')} ({position.get('mfe',0):+.1f}%) → "
+            f"入场: ${position['entry_price']} → 最低: ${min(prices):.6f} → 最高: ${max(prices):.6f} → "
             f"平仓: ${position['exit_price']} (最终: {position.get('pnl_pct',0):+.1f}%)\n"
-            f"价格: ${min(prices):.6f}~${max(prices):.6f} | 时长: {len(snapshots)}分钟"
+            f"MAE(最大回撤): {position.get('mae',0):+.1f}% | MFE(最大浮盈): {position.get('mfe',0):+.1f}% | 持仓: {len(snapshots)}分钟"
         )
+        # Sample every N snapshots to create kline-like data
+        step = max(1, len(snapshots) // 30)
+        sampled = snapshots[::step][:30]
+        kline_lines = []
+        for s in sampled:
+            kline_lines.append(f"时间:{s.get('timestamp','?')[:16]} 价格:${s['price']:.6f}")
+        kline_summary = "\n".join(kline_lines)
 
-    events_text = "\n".join([f"[{e['timestamp'][:16]}] {e['event_type']}: ${e['price']} {(e.get('ai_analysis',''))[:100]}" for e in events])
-    factors_text = "\n".join([f"因子{i+1}: {f['description']} ({f['bias']})" for i, f in enumerate(factors)])
+    # Fetch actual K-line data for the trade period from OKX
+    trade_klines = ""
+    try:
+        swap_id = f"{coin}-USDT-SWAP"
+        kb = await _okx_get("/api/v5/market/candles", {"instId": swap_id, "bar": "1H", "limit": "100"})
+        if kb and kb.get("data"):
+            lines = []
+            for k in kb["data"][:48]:
+                lines.append(f"{k[0]}|O:{k[1]}|H:{k[2]}|L:{k[3]}|C:{k[4]}|V:{k[5]}")
+            trade_klines = "\n".join(lines)
+    except Exception:
+        pass
+
+    events_text = "\n".join([f"[{e['timestamp'][:16]}] {e['event_type']}: ${e['price']} {(e.get('ai_analysis',''))[:100]}" for e in events]) if events else "无事件记录"
+    factors_text = "\n".join([f"因子{i+1}: {f['description']} ({f['bias']})" for i, f in enumerate(position.get("factors", []))])
+
+    is_profit = position.get('pnl', 0) > 0
 
     prompt = (
-        f"你是交易复盘专家。请对 {position['coin']} 交易做9维深度复盘。\n\n"
+        f"你是一位顶级专业合约交易员，正在对 {coin} 的一笔已平仓交易做全面复盘分析。\n\n"
+        f"=== 交易概况 ===\n"
         f"方向: {position['direction']} {position['leverage']}x | "
-        f"结果: {'盈利' if position.get('pnl',0)>0 else '亏损'} {position.get('pnl_pct',0):+.1f}% (${position.get('pnl',0):+.2f})\n\n"
-        f"=== 价格路径 ===\n{price_path}\n\n"
-        f"=== 事件 ===\n{events_text or '无'}\n\n"
-        f"=== 入场因子 ===\n{factors_text}\n\n"
-        "请从9个维度逐一分析哪些判断正确、哪些错误，追溯根源：\n"
-        "1.代币经济学判断 2.新闻催化剂判断 3.技术面各指标判断 4.链上数据 "
-        "5.宏观判断 6.庄家行为 7.情绪面 8.流动性风险 9.综合决策\n\n"
-        "严格按JSON返回：\n"
-        '{"factor_reviews":[{"factor_index":1,"original":"","verdict":"✅有效/❌误判/⚠️部分有效","explanation":"根源分析"}],'
-        '"dimension_review":{"token_economics":"","news":"","technical":"","onchain":"","macro":"","whale":"","sentiment":"","liquidity":"","decision":""},'
-        '"core_correct_factor":"核心正确因素","core_wrong_factor":"核心错误因素",'
-        '"root_lesson":"根源教训","what_if":"如果重来","reusable_rule":"可复用规则"}'
+        f"结果: {'✅ 盈利' if is_profit else '❌ 亏损'} {position.get('pnl_pct',0):+.1f}% (${position.get('pnl',0):+.2f})\n"
+        f"{price_path}\n\n"
+        f"=== 持仓期间价格快照 ===\n{kline_summary or '无数据'}\n\n"
+        f"=== 近期1H K线数据 ===\n{trade_klines or '无数据'}\n\n"
+        f"=== 持仓期间事件 ===\n{events_text}\n\n"
+        f"=== 入场时的分析因子 ===\n{factors_text or '无因子记录'}\n\n"
+        "请你作为专业交易员，对这笔交易进行全面复盘。搜索这段时间的最新信息。\n\n"
+        "你需要回答：\n"
+        "1. 整体判断：我们的入场分析是否准确？准确率打分(1-10)\n"
+        "2. 如果准确：哪些因素使行情按我们分析的方向走？具体列出\n"
+        "3. 如果错误：哪些因素导致行情偏离了我们的分析？具体列出\n"
+        "4. 技术面实际表现：持仓期间出现了什么K线形态？量价关系？支撑阻力是否有效？关键技术指标(RSI/MACD/BB等)怎么走的？\n"
+        "5. 信息面影响：持仓期间有什么新闻/事件实际影响了行情？是利好还是利空？\n"
+        "6. 最佳操作：如果你是专业交易员，面对同样的行情，你会怎么做？最优入场点、平仓点、仓位管理\n"
+        "7. 可复用的教训和规则\n\n"
+        "严格按以下JSON返回：\n"
+        '{"accuracy_verdict":"准确/部分准确/错误",'
+        '"accuracy_score":7,'
+        '"accuracy_reason":"为什么判断准确或错误的一句话总结",'
+        '"correct_factors":["使行情按分析走的因素1","因素2"],'
+        '"wrong_factors":["导致分析偏差的因素1","因素2"],'
+        '"technical_review":{"candlestick_patterns":"持仓期间实际出现的K线形态","volume_price":"量价关系表现","support_resistance":"支撑阻力是否有效","key_indicators":"RSI/MACD/BB等关键指标走势","market_structure":"市场结构变化"},'
+        '"news_review":{"events":[{"news":"具体新闻","impact":"利好/利空","effect":"对价格的实际影响"}],"overall":"信息面整体影响"},'
+        '"professional_opinion":{"optimal_entry":"最优入场点和时机","optimal_exit":"最优平仓点","position_management":"最优仓位管理策略","what_i_would_do":"如果我是专业交易员我会怎么做"},'
+        '"key_lesson":"这笔交易最重要的一个教训",'
+        '"reusable_rule":"可复用的交易规则",'
+        '"what_if":"如果重来我会怎么做"}'
     )
     try:
         return _parse_json(await _gemini_call(prompt))
