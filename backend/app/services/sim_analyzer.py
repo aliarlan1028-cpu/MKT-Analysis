@@ -8,6 +8,8 @@ Call 4: Executive Summary + Trading Decision (synthesizing all)
 
 import json
 import re
+import asyncio
+import random
 from datetime import datetime, timezone, timedelta
 from google import genai
 from google.genai import types
@@ -16,21 +18,38 @@ from app.services.market_data import _okx_get
 
 _BEIJING_TZ = timezone(timedelta(hours=8))
 
+_MAX_RETRIES = 4
+_BASE_DELAY = 3  # seconds
+
 
 async def _gemini_call(prompt: str) -> str:
-    """Call Gemini 2.5 Flash with Google Search grounding."""
-    api_key = settings.get_next_gemini_key()
-    client = genai.Client(api_key=api_key)
-    google_search_tool = types.Tool(google_search=types.GoogleSearch())
-    config = types.GenerateContentConfig(
-        tools=[google_search_tool],
-        temperature=0.5,
-        max_output_tokens=16384,
-    )
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL, contents=prompt, config=config,
-    )
-    return response.text or ""
+    """Call Gemini 2.5 Flash with Google Search grounding + retry with backoff."""
+    last_err = None
+    for attempt in range(_MAX_RETRIES):
+        api_key = settings.get_next_gemini_key()
+        try:
+            client = genai.Client(api_key=api_key)
+            google_search_tool = types.Tool(google_search=types.GoogleSearch())
+            config = types.GenerateContentConfig(
+                tools=[google_search_tool],
+                temperature=0.5,
+                max_output_tokens=16384,
+            )
+            response = client.models.generate_content(
+                model=settings.GEMINI_MODEL, contents=prompt, config=config,
+            )
+            return response.text or ""
+        except Exception as e:
+            last_err = e
+            err_str = str(e).lower()
+            # Only retry on rate limit / unavailable errors
+            if "429" in err_str or "resource_exhausted" in err_str or "503" in err_str or "unavailable" in err_str or "overloaded" in err_str:
+                delay = _BASE_DELAY * (2 ** attempt) + random.uniform(0, 2)
+                print(f"  ⚠️ Gemini {attempt+1}/{_MAX_RETRIES} failed ({type(e).__name__}), retry in {delay:.1f}s...")
+                await asyncio.sleep(delay)
+            else:
+                raise  # non-retryable error
+    raise last_err  # type: ignore
 
 
 def _parse_json(text: str) -> dict:
@@ -248,11 +267,14 @@ async def run_full_analysis(coin: str) -> dict:
 
     results = {"coin": coin, "timestamp": datetime.now(_BEIJING_TZ).isoformat(), "market_data": md}
 
-    for label, func, args, key in [
+    calls = [
         ("代币经济学+新闻", call1_economics_news, (coin, md), "call1"),
         ("技术面分析", call2_technical, (coin, md), "call2"),
         ("链上+宏观+情绪", call3_onchain_macro_sentiment, (coin, md), "call3"),
-    ]:
+    ]
+    for i, (label, func, args, key) in enumerate(calls):
+        if i > 0:
+            await asyncio.sleep(2)  # stagger calls to avoid rate limits
         print(f"    📊 {label}...")
         try:
             results[key] = await func(*args)
@@ -261,6 +283,7 @@ async def run_full_analysis(coin: str) -> dict:
             results[key] = {"error": str(e)}
 
     # Call 4 needs results from 1-3
+    await asyncio.sleep(2)
     print(f"    📋 执行摘要+交易决策...")
     try:
         results["call4"] = await call4_summary_decision(
