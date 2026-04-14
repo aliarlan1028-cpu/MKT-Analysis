@@ -47,13 +47,13 @@ function IndicatorCard({ label, value, summary, type = "neutral" }: { label: str
   const valueColor = { bullish: "text-accent-green", bearish: "text-accent-red", neutral: "text-white", warning: "text-accent-yellow" };
   const dot = { bullish: "bg-accent-green", bearish: "bg-accent-red", neutral: "bg-white/30", warning: "bg-accent-yellow" };
   return (
-    <div className={`bg-card-bg border ${border[type]} rounded-xl p-3 flex flex-col justify-between min-h-[90px]`}>
-      <div className="flex items-center gap-1.5 mb-1">
-        <div className={`w-2 h-2 rounded-full ${dot[type]}`} />
-        <span className="text-[10px] text-text-muted font-medium uppercase tracking-wide">{label}</span>
+    <div className={`bg-card-bg border ${border[type]} rounded-xl p-2.5 flex flex-col justify-between min-h-[72px]`}>
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <div className={`w-1.5 h-1.5 rounded-full ${dot[type]}`} />
+        <span className="text-[9px] text-text-muted font-medium uppercase tracking-wide">{label}</span>
       </div>
-      <div className={`text-lg font-bold font-mono leading-tight ${valueColor[type]}`}>{value}</div>
-      {summary && <p className="text-[10px] text-text-muted mt-1 leading-tight">{summary}</p>}
+      <div className={`text-xs font-bold font-mono leading-snug ${valueColor[type]}`}>{value}</div>
+      {summary && <p className="text-[9px] text-text-muted mt-0.5 leading-snug line-clamp-2">{summary}</p>}
     </div>
   );
 }
