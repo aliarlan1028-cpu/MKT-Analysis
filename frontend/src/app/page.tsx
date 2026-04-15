@@ -306,9 +306,9 @@ export default function Home() {
       {tab === "reports" && (
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* Manual push with coin selector + report list */}
+            {/* Manual push with coin selector modal + report list */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              <div className="relative shrink-0" ref={manualPushRef}>
+              <div className="shrink-0" ref={manualPushRef}>
                 <button
                   onClick={() => setShowManualPush(!showManualPush)}
                   disabled={analyzing}
@@ -316,12 +316,18 @@ export default function Home() {
                 >
                   {analyzing ? "⏳ 分析中..." : "🚀 手动推送 ▾"}
                 </button>
-                {showManualPush && (
-                  <div className="absolute top-full left-0 mt-1 w-64 bg-card-bg border border-card-border rounded-lg shadow-xl z-50">
-                    <input type="text" placeholder="搜索币种..." value={manualSearch}
-                      onChange={(e) => setManualSearch(e.target.value.toUpperCase())}
-                      className="w-full px-3 py-2 bg-transparent border-b border-card-border text-sm outline-none" autoFocus />
-                    <div className="max-h-60 overflow-y-auto">
+              </div>
+              {/* Modal overlay for coin selection */}
+              {showManualPush && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-[20vh]" onClick={() => setShowManualPush(false)}>
+                  <div className="w-80 bg-card-bg border border-card-border rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="p-3 border-b border-card-border">
+                      <h3 className="text-sm font-semibold mb-2">选择要分析的币种</h3>
+                      <input type="text" placeholder="搜索币种..." value={manualSearch}
+                        onChange={(e) => setManualSearch(e.target.value.toUpperCase())}
+                        className="w-full px-3 py-2 bg-white/5 border border-card-border rounded-lg text-sm outline-none focus:border-accent-blue/50" autoFocus />
+                    </div>
+                    <div className="max-h-72 overflow-y-auto p-1">
                       {availableSymbols
                         .filter(s => s.symbol.includes(manualSearch) || s.name.toUpperCase().includes(manualSearch))
                         .map(s => (
@@ -335,15 +341,15 @@ export default function Home() {
                             } catch { alert("无法连接后端服务"); }
                             finally { setAnalyzing(false); }
                           }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-blue/10 flex items-center justify-between">
+                          className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent-blue/10 rounded-lg flex items-center justify-between">
                           <span className="font-medium">{s.name}</span>
                           <span className="text-text-muted text-xs">{s.symbol.replace("USDT","")}/USDT</span>
                         </button>
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               {reports.map((r) => (
                 <button
                   key={r.id}
