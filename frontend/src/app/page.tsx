@@ -85,10 +85,26 @@ export default function Home() {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (addRef.current && !addRef.current.contains(e.target as Node)) setShowAddCard(false);
-      if (manualPushRef.current && !manualPushRef.current.contains(e.target as Node)) setShowManualPush(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Trigger analysis when a symbol is selected from picker
+  const triggerAnalysis = useCallback(async (sym: {symbol: string; name: string}) => {
+    setShowManualPush(false);
+    setManualSearch("");
+    setAnalyzing(true);
+    setAnalyzingCoin(sym.name || sym.symbol);
+    try {
+      const res = await fetch(`${API}/analyze/${sym.symbol}`, { method: "POST" });
+      if (res.ok) {
+        // re-fetch reports
+        const rRes = await fetch(`${API}/reports?limit=10`);
+        if (rRes.ok) setReports(await rRes.json());
+      } else { alert("分析失败，请稍后重试"); }
+    } catch { alert("无法连接后端服务"); }
+    finally { setAnalyzing(false); setAnalyzingCoin(""); }
   }, []);
 
   // Fetch custom market data
@@ -338,15 +354,7 @@ export default function Home() {
                         .filter(s => s.symbol.includes(manualSearch) || s.name.toUpperCase().includes(manualSearch))
                         .map(s => (
                         <button key={s.symbol}
-                          onClick={async () => {
-                            setShowManualPush(false); setManualSearch(""); setAnalyzing(true); setAnalyzingCoin(s.name || s.symbol);
-                            try {
-                              const res = await fetch(`${API}/analyze/${s.symbol}`, { method: "POST" });
-                              if (res.ok) await fetchData();
-                              else alert("分析失败，请稍后重试");
-                            } catch { alert("无法连接后端服务"); }
-                            finally { setAnalyzing(false); setAnalyzingCoin(""); }
-                          }}
+                          onClick={() => triggerAnalysis(s)}
                           className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent-blue/10 rounded-lg flex items-center justify-between">
                           <span className="font-medium">{s.name}</span>
                           <span className="text-text-muted text-xs">{s.symbol.replace("USDT","")}/USDT</span>
