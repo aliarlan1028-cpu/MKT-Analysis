@@ -45,6 +45,7 @@ export default function Home() {
   const [tab, setTab] = useState<"reports" | "pro" | "sim">("reports");
   const [selectedSymbol, setSelectedSymbol] = useState<string>("BTC");
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzingCoin, setAnalyzingCoin] = useState("");
   const [showManualPush, setShowManualPush] = useState(false);
   const [manualSearch, setManualSearch] = useState("");
   const [availableSymbols, setAvailableSymbols] = useState<{symbol: string; name: string}[]>([]);
@@ -338,13 +339,13 @@ export default function Home() {
                         .map(s => (
                         <button key={s.symbol}
                           onClick={async () => {
-                            setShowManualPush(false); setManualSearch(""); setAnalyzing(true);
+                            setShowManualPush(false); setManualSearch(""); setAnalyzing(true); setAnalyzingCoin(s.name || s.symbol);
                             try {
                               const res = await fetch(`${API}/analyze/${s.symbol}`, { method: "POST" });
                               if (res.ok) await fetchData();
                               else alert("分析失败，请稍后重试");
                             } catch { alert("无法连接后端服务"); }
-                            finally { setAnalyzing(false); }
+                            finally { setAnalyzing(false); setAnalyzingCoin(""); }
                           }}
                           className="w-full text-left px-3 py-2.5 text-sm hover:bg-accent-blue/10 rounded-lg flex items-center justify-between">
                           <span className="font-medium">{s.name}</span>
@@ -370,13 +371,23 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            {activeReport ? (
+
+            {/* Analyzing progress indicator */}
+            {analyzing && (
+              <div className="bg-accent-blue/10 border border-accent-blue/30 rounded-xl p-6 text-center">
+                <div className="w-10 h-10 border-[3px] border-accent-blue border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-sm font-semibold text-accent-blue">🔬 正在分析 {analyzingCoin}...</p>
+                <p className="text-xs text-text-muted mt-1">AI 正在搜索最新数据并生成分析报告，大约需要 30-60 秒</p>
+              </div>
+            )}
+
+            {!analyzing && activeReport ? (
               <ReportCard report={activeReport} />
-            ) : (
+            ) : !analyzing ? (
               <div className="bg-card-bg border border-card-border rounded-xl p-8 text-center text-text-muted">
                 <p>暂无分析报告，请点击上方「🚀 手动推送」按钮生成</p>
               </div>
-            )}
+            ) : null}
           </div>
           <div>
             <h2 className="text-lg font-semibold mb-4">📅 事件日历</h2>
