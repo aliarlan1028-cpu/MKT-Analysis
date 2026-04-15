@@ -121,6 +121,44 @@ export default function ReportCard({ report }: { report: AnalysisReport }) {
         </div>
       )}
 
+      {/* 7-Day Bullish/Bearish News */}
+      {report.news_7d && (report.news_7d.bullish?.length > 0 || report.news_7d.bearish?.length > 0) && (
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold mb-3">📰 7日内利好利空</h3>
+          {report.news_7d.summary && (
+            <p className="text-xs text-text-muted mb-3 bg-white/5 rounded-lg p-2">{report.news_7d.summary}</p>
+          )}
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <h4 className="text-xs text-accent-green font-semibold mb-2">🟢 利好</h4>
+              {report.news_7d.bullish?.length > 0 ? report.news_7d.bullish.map((n, i) => (
+                <div key={i} className="bg-accent-green/5 border border-accent-green/20 rounded-lg p-2 mb-2">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${n.impact === "HIGH" ? "bg-accent-green/30 text-accent-green" : "bg-accent-green/15 text-accent-green/70"}`}>{n.impact}</span>
+                    <span className="text-xs font-medium">{n.event}</span>
+                  </div>
+                  {n.detail && <p className="text-[11px] text-text-muted">{n.detail}</p>}
+                  {n.source && <p className="text-[9px] text-text-muted/50 mt-0.5">来源: {n.source}</p>}
+                </div>
+              )) : <p className="text-xs text-text-muted">暂无利好消息</p>}
+            </div>
+            <div>
+              <h4 className="text-xs text-accent-red font-semibold mb-2">🔴 利空</h4>
+              {report.news_7d.bearish?.length > 0 ? report.news_7d.bearish.map((n, i) => (
+                <div key={i} className="bg-accent-red/5 border border-accent-red/20 rounded-lg p-2 mb-2">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${n.impact === "HIGH" ? "bg-accent-red/30 text-accent-red" : "bg-accent-red/15 text-accent-red/70"}`}>{n.impact}</span>
+                    <span className="text-xs font-medium">{n.event}</span>
+                  </div>
+                  {n.detail && <p className="text-[11px] text-text-muted">{n.detail}</p>}
+                  {n.source && <p className="text-[9px] text-text-muted/50 mt-0.5">来源: {n.source}</p>}
+                </div>
+              )) : <p className="text-xs text-text-muted">暂无利空消息</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Analysis Sections */}
       <div className="grid md:grid-cols-2 gap-4">
         <Section section={report.technical} />

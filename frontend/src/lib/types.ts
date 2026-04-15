@@ -60,6 +60,19 @@ export interface CalendarEvent {
   impact_if_missed: string | null;
 }
 
+export interface NewsItem {
+  event: string;
+  detail?: string;
+  impact?: string;
+  source?: string;
+}
+
+export interface News7d {
+  bullish: NewsItem[];
+  bearish: NewsItem[];
+  summary: string;
+}
+
 export interface AnalysisReport {
   id: string;
   symbol: string;
@@ -67,13 +80,14 @@ export interface AnalysisReport {
   session: string;
   timestamp: string;
   price_at_analysis: number;
-  ai_provider?: string;  // "gemini" | "deepseek"
+  ai_provider?: string;
   signal: TradingSignal;
   technical: AnalysisSection;
   fundamental: AnalysisSection;
   sentiment: AnalysisSection;
   macro: AnalysisSection;
   risk_warning: AnalysisSection;
+  news_7d?: News7d;
   calendar_events: CalendarEvent[];
 }
 

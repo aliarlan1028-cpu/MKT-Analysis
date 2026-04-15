@@ -76,9 +76,10 @@ async def trigger_all():
 
 @router.post("/analyze/{symbol}", response_model=AnalysisReport)
 async def trigger_analysis(symbol: str):
-    """Manually trigger analysis for a symbol."""
-    if symbol not in settings.SYMBOLS:
-        raise HTTPException(status_code=400, detail=f"Symbol {symbol} not tracked")
+    """Manually trigger analysis for any symbol."""
+    symbol = symbol.upper()
+    if not symbol.endswith("USDT"):
+        symbol = f"{symbol}USDT"
     report = await generate_report_for_symbol(symbol)
     if not report:
         raise HTTPException(status_code=500, detail="Analysis failed")
@@ -87,10 +88,10 @@ async def trigger_analysis(symbol: str):
 
 @router.get("/symbols")
 async def get_symbols():
-    """Get list of tracked symbols."""
+    """Get list of all known symbols for manual analysis."""
     return [
-        {"symbol": s, "name": settings.SYMBOL_NAMES.get(s, s)}
-        for s in settings.SYMBOLS
+        {"symbol": s, "name": n}
+        for s, n in settings.SYMBOL_NAMES.items()
     ]
 
 
@@ -344,6 +345,17 @@ async def sim_review_position(position_id: int):
         conn.commit()
         conn.close()
     return review
+
+
+@router.post("/sim/positions/{position_id}/summary")
+async def save_trade_summary(position_id: int, body: dict):
+    """Save a manual trade summary/reflection for a closed position."""
+    summary = body.get("summary", "")
+    conn = _get_db()
+    conn.execute("UPDATE sim_positions SET trade_summary=? WHERE id=?", (summary, position_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @router.get("/sim/klines/{coin}")

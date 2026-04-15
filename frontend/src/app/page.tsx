@@ -45,6 +45,10 @@ export default function Home() {
   const [tab, setTab] = useState<"reports" | "pro" | "sim">("reports");
   const [selectedSymbol, setSelectedSymbol] = useState<string>("BTC");
   const [analyzing, setAnalyzing] = useState(false);
+  const [showManualPush, setShowManualPush] = useState(false);
+  const [manualSearch, setManualSearch] = useState("");
+  const [availableSymbols, setAvailableSymbols] = useState<{symbol: string; name: string}[]>([]);
+  const manualPushRef = useRef<HTMLDivElement>(null);
 
   // Custom market cards
   const [customCoins, setCustomCoins] = useState<string[]>(DEFAULT_CUSTOM_COINS);
@@ -60,17 +64,22 @@ export default function Home() {
     fetch(`${API}/derivatives/symbols`)
       .then(r => r.ok ? r.json() : [])
       .then((data: Array<{ccy?: string}> | string[]) => {
-        // API returns [{instId, ccy, label}] objects — extract ccy strings
         const symbols = data.map((d: {ccy?: string} | string) => typeof d === "string" ? d : (d.ccy || ""));
         setAllSymbols(symbols.filter(Boolean));
       })
       .catch(() => {});
+    // Fetch available symbols for manual push
+    fetch(`${API}/symbols`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: {symbol: string; name: string}[]) => setAvailableSymbols(data))
+      .catch(() => {});
   }, []);
 
-  // Close add dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (addRef.current && !addRef.current.contains(e.target as Node)) setShowAddCard(false);
+      if (manualPushRef.current && !manualPushRef.current.contains(e.target as Node)) setShowManualPush(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -290,36 +299,51 @@ export default function Home() {
               : "text-text-muted hover:text-white"
           }`}
         >
-          🎮 AI 模拟盘
+          🎮 模拟盘
         </button>
       </div>
 
       {tab === "reports" && (
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* Always visible: manual trigger button + report selector */}
+            {/* Manual push with coin selector + report list */}
             <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              <button
-                onClick={async () => {
-                  setAnalyzing(true);
-                  try {
-                    const res = await fetch(`${API}/analyze/all`, { method: "POST" });
-                    if (res.ok) {
-                      await fetchData();
-                    } else {
-                      alert("分析触发失败，请稍后重试");
-                    }
-                  } catch {
-                    alert("无法连接后端服务");
-                  } finally {
-                    setAnalyzing(false);
-                  }
-                }}
-                disabled={analyzing}
-                className="shrink-0 px-3 py-2 bg-accent-blue text-white rounded-lg text-sm hover:bg-accent-blue/80 transition-colors disabled:opacity-50"
-              >
-                {analyzing ? "⏳ 分析中..." : "🚀 手动推送"}
-              </button>
+              <div className="relative shrink-0" ref={manualPushRef}>
+                <button
+                  onClick={() => setShowManualPush(!showManualPush)}
+                  disabled={analyzing}
+                  className="px-3 py-2 bg-accent-blue text-white rounded-lg text-sm hover:bg-accent-blue/80 transition-colors disabled:opacity-50"
+                >
+                  {analyzing ? "⏳ 分析中..." : "🚀 手动推送 ▾"}
+                </button>
+                {showManualPush && (
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-card-bg border border-card-border rounded-lg shadow-xl z-50">
+                    <input type="text" placeholder="搜索币种..." value={manualSearch}
+                      onChange={(e) => setManualSearch(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2 bg-transparent border-b border-card-border text-sm outline-none" autoFocus />
+                    <div className="max-h-60 overflow-y-auto">
+                      {availableSymbols
+                        .filter(s => s.symbol.includes(manualSearch) || s.name.toUpperCase().includes(manualSearch))
+                        .map(s => (
+                        <button key={s.symbol}
+                          onClick={async () => {
+                            setShowManualPush(false); setManualSearch(""); setAnalyzing(true);
+                            try {
+                              const res = await fetch(`${API}/analyze/${s.symbol}`, { method: "POST" });
+                              if (res.ok) await fetchData();
+                              else alert("分析失败，请稍后重试");
+                            } catch { alert("无法连接后端服务"); }
+                            finally { setAnalyzing(false); }
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent-blue/10 flex items-center justify-between">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-text-muted text-xs">{s.symbol.replace("USDT","")}/USDT</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               {reports.map((r) => (
                 <button
                   key={r.id}

@@ -59,12 +59,41 @@ class Settings:
     # Frontend
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-    # Symbols to track (3 coins × 2 reports/day = 6 Gemini calls)
-    SYMBOLS: list[str] = ["BTCUSDT", "SOLUSDT", "SUIUSDT"]
+    # Symbols to track (default: BTC only, manual push for others)
+    SYMBOLS: list[str] = ["BTCUSDT"]
     SYMBOL_NAMES: dict[str, str] = {
         "BTCUSDT": "Bitcoin",
         "SOLUSDT": "Solana",
         "SUIUSDT": "SUI",
+        "ETHUSDT": "Ethereum",
+        "BNBUSDT": "BNB",
+        "XRPUSDT": "XRP",
+        "ADAUSDT": "Cardano",
+        "DOGEUSDT": "Dogecoin",
+        "AVAXUSDT": "Avalanche",
+        "DOTUSDT": "Polkadot",
+        "LINKUSDT": "Chainlink",
+        "MATICUSDT": "Polygon",
+        "ATOMUSDT": "Cosmos",
+        "ARBUSDT": "Arbitrum",
+        "OPUSDT": "Optimism",
+        "APTUSDT": "Aptos",
+        "INJUSDT": "Injective",
+        "NEARUSDT": "NEAR",
+        "FTMUSDT": "Fantom",
+        "FILUSDT": "Filecoin",
+        "LDOUSDT": "Lido DAO",
+        "MKRUSDT": "Maker",
+        "AAVEUSDT": "Aave",
+        "UNIUSDT": "Uniswap",
+        "PEPEUSDT": "PEPE",
+        "SHIBUSDT": "Shiba Inu",
+        "WIFUSDT": "dogwifhat",
+        "JUPUSDT": "Jupiter",
+        "ENAUSDT": "Ethena",
+        "TONUSDT": "Toncoin",
+        "TIAUSDT": "Celestia",
+        "SEIUSDT": "Sei",
     }
 
     # Schedule times (Beijing time UTC+8)

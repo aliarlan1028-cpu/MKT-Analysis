@@ -128,6 +128,12 @@ def init_sim_db():
             (INITIAL_BALANCE, now, now)
         )
     conn.commit()
+    # Add trade_summary column if not exists (migration)
+    try:
+        conn.execute("ALTER TABLE sim_positions ADD COLUMN trade_summary TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.close()
     print("  ✓ Sim trading database initialized")
 
@@ -192,6 +198,7 @@ def get_positions(status: str = None) -> list[dict]:
         d = dict(r)
         d["factors"] = json.loads(d["factors_json"]) if d["factors_json"] else []
         d["factor_review"] = json.loads(d["factor_review_json"]) if d["factor_review_json"] else None
+        d["trade_summary"] = d.get("trade_summary", None)
         result.append(d)
     return result
 
@@ -205,6 +212,7 @@ def get_position(position_id: int) -> dict | None:
     d = dict(row)
     d["factors"] = json.loads(d["factors_json"]) if d["factors_json"] else []
     d["factor_review"] = json.loads(d["factor_review_json"]) if d["factor_review_json"] else None
+    d["trade_summary"] = d.get("trade_summary", None)
     return d
 
 

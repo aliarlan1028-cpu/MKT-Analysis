@@ -16,7 +16,6 @@ from app.services.technical import (
     format_multi_tf_for_prompt, format_key_levels_for_prompt,
 )
 from app.services.gemini_analyzer import analyze_symbol
-from app.services.deepseek_analyzer import analyze_symbol_deepseek
 
 
 # ── News fetcher (free, no API key) ──
@@ -122,24 +121,28 @@ async def generate_report_for_symbol(symbol: str, btc_context: str = "") -> Anal
             "btc_context": btc_context,
         }
 
-        # 5. Run Gemini AI analysis (primary) → DeepSeek fallback on ANY error
+        # 5. Run Gemini AI analysis (with retry)
         report = None
-        try:
-            report = await analyze_symbol(market, indicators, fear_greed, enriched_context)
-            print(f"  ✓ Gemini Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
-        except Exception as gemini_err:
-            err_str = str(gemini_err)
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
-                print(f"  ⚠ Gemini 额度用完 (429), 降级到 DeepSeek...")
-            else:
-                print(f"  ⚠ Gemini 失败 ({err_str[:120]}), 降级到 DeepSeek...")
+        last_err = None
+        for attempt in range(3):
             try:
-                report = await analyze_symbol_deepseek(market, indicators, fear_greed, enriched_context)
-                print(f"  ✓ DeepSeek Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
-            except Exception as ds_err:
-                print(f"  ✗ DeepSeek also failed: {ds_err}")
-                traceback.print_exc()
-                return None
+                report = await analyze_symbol(market, indicators, fear_greed, enriched_context)
+                print(f"  ✓ Gemini Analysis: {report.signal.direction} (confidence: {report.signal.confidence})")
+                break
+            except Exception as e:
+                last_err = e
+                err_str = str(e).lower()
+                if "429" in err_str or "resource_exhausted" in err_str or "503" in err_str or "unavailable" in err_str:
+                    delay = 5 * (2 ** attempt)
+                    print(f"  ⚠ Gemini attempt {attempt+1}/3 failed (rate limit), retry in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    print(f"  ✗ Gemini failed: {e}")
+                    traceback.print_exc()
+                    return None
+        if not report and last_err:
+            print(f"  ✗ All Gemini retries failed: {last_err}")
+            return None
 
         if not report:
             return None

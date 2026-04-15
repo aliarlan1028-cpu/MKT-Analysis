@@ -88,6 +88,17 @@ class AnalysisSection(BaseModel):
     key_resistance: list[float] = []
 
 
+class NewsItem(BaseModel):
+    event: str
+    detail: str = ""
+    impact: str = "MEDIUM"  # HIGH, MEDIUM, LOW
+    source: str = ""
+
+class News7d(BaseModel):
+    bullish: list[NewsItem] = []
+    bearish: list[NewsItem] = []
+    summary: str = ""
+
 class AnalysisReport(BaseModel):
     id: str | None = None
     symbol: str
@@ -95,13 +106,14 @@ class AnalysisReport(BaseModel):
     session: str  # "morning", "evening"
     timestamp: datetime
     price_at_analysis: float
-    ai_provider: str = "gemini"  # "gemini" or "deepseek"
+    ai_provider: str = "gemini"
     signal: TradingSignal
     technical: AnalysisSection
     fundamental: AnalysisSection
     sentiment: AnalysisSection
     macro: AnalysisSection
     risk_warning: AnalysisSection
+    news_7d: News7d | None = None
     calendar_events: list[CalendarEvent] = []
     raw_market_data: MarketData | None = None
     raw_indicators: TechnicalIndicators | None = None

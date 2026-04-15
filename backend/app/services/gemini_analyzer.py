@@ -7,7 +7,7 @@ from google.genai import types
 from app.core.config import settings
 from app.models.schemas import (
     MarketData, TechnicalIndicators, FearGreedIndex,
-    AnalysisReport, AnalysisSection, TradingSignal, CalendarEvent,
+    AnalysisReport, AnalysisSection, TradingSignal, CalendarEvent, News7d, NewsItem,
 )
 from app.services.technical import format_indicators_for_prompt, format_multi_tf_for_prompt, format_key_levels_for_prompt
 
@@ -80,6 +80,9 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         '"sentiment":{"title":"情绪面分析","content":"综合判断","bullets":["要点1","要点2"]},'
         '"macro":{"title":"宏观面分析","content":"综合判断","bullets":["要点1","要点2"]},'
         '"risk_warning":{"title":"风险提示","content":"风险总结","bullets":["风险1","风险2"]},'
+        '"news_7d":{"bullish":[{"event":"利好事件标题","detail":"详细说明","impact":"HIGH/MEDIUM/LOW","source":"来源"}],'
+        '"bearish":[{"event":"利空事件标题","detail":"详细说明","impact":"HIGH/MEDIUM/LOW","source":"来源"}],'
+        '"summary":"7日内信息面整体偏多/偏空/中性的一句话总结"},'
         '"calendar_events":[{"date":"2026-03-30","time":"20:30","title":"美国非农就业数据",'
         '"impact":"HIGH","category":"economic","previous":"15.1万",'
         '"forecast":"16.0万","description":"影响说明",'
@@ -102,7 +105,8 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         f"1. 最新的{market.name}相关新闻、政策、ETF资金流向\n"
         "2. 美联储最新政策动向、利率预期\n"
         "3. 美元指数DXY走势对加密市场影响\n"
-        "4. 未来7天美国重大经济数据和事件\n\n"
+        "4. 未来7天美国重大经济数据和事件\n"
+        f"5. 搜索过去7天内所有影响{market.name}的利好和利空消息，填入news_7d字段\n\n"
         f"请严格按以下JSON格式返回(不要包含markdown代码块标记):\n{json_schema}\n\n"
         "注意:\n"
         "- calendar_events只包含未来7天内的美国经济数据和美联储相关事件\n"
@@ -112,7 +116,9 @@ def _build_prompt(market: MarketData, indicators: TechnicalIndicators,
         "- confidence反映你对该方向判断的把握程度(0-100)\n"
         "- 中文回复但JSON key保持英文\n"
         "- technical部分必须包含key_support和key_resistance字段，基于提供的摆动高低点给出2个关键价位\n"
-        "- 如果多时间框架方向矛盾(如日线多头但1h空头)，confidence应降低并在risk_warning中说明"
+        "- 如果多时间框架方向矛盾(如日线多头但1h空头)，confidence应降低并在risk_warning中说明\n"
+        "- news_7d必须包含过去7天内真实搜索到的利好和利空消息，每条包含event/detail/impact/source字段\n"
+        "- news_7d.summary用一句话总结7日信息面是偏多、偏空还是中性"
     )
 
 
@@ -191,6 +197,16 @@ async def analyze_symbol(
 
     report_id = f"{market.symbol}_{session}_{datetime.now().strftime('%Y%m%d%H%M')}"
 
+    # Parse news_7d if present
+    news_7d = None
+    if data.get("news_7d"):
+        n7 = data["news_7d"]
+        news_7d = News7d(
+            bullish=[NewsItem(**n) for n in n7.get("bullish", [])],
+            bearish=[NewsItem(**n) for n in n7.get("bearish", [])],
+            summary=n7.get("summary", ""),
+        )
+
     return AnalysisReport(
         id=report_id,
         symbol=market.symbol,
@@ -205,6 +221,7 @@ async def analyze_symbol(
         sentiment=AnalysisSection(**data["sentiment"]),
         macro=AnalysisSection(**data["macro"]),
         risk_warning=AnalysisSection(**data["risk_warning"]),
+        news_7d=news_7d,
         calendar_events=[CalendarEvent(**e) for e in data.get("calendar_events", [])],
         raw_market_data=market,
         raw_indicators=indicators,
