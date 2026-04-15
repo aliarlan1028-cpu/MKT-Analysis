@@ -68,10 +68,15 @@ export default function Home() {
         setAllSymbols(symbols.filter(Boolean));
       })
       .catch(() => {});
-    // Fetch available symbols for manual push
-    fetch(`${API}/symbols`)
+    // Fetch available perpetual symbols for manual push
+    fetch(`${API}/derivatives/symbols`)
       .then(r => r.ok ? r.json() : [])
-      .then((data: {symbol: string; name: string}[]) => setAvailableSymbols(data))
+      .then((data: Array<{ccy?: string; label?: string} | string>) => {
+        setAvailableSymbols(data.map(d => {
+          if (typeof d === "string") return { symbol: `${d}USDT`, name: d };
+          return { symbol: `${d.ccy || ""}USDT`, name: d.label || d.ccy || "" };
+        }).filter(s => s.symbol && s.symbol !== "USDT"));
+      })
       .catch(() => {});
   }, []);
 
