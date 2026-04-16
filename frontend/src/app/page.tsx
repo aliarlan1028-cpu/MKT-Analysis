@@ -14,7 +14,8 @@ import PumpScannerPanel from "@/components/PumpScannerPanel";
 import BtcDashboard from "@/components/BtcDashboard";
 import BtcVerdictCard from "@/components/BtcVerdictCard";
 import BtcTopCards from "@/components/BtcTopCards";
-import SimTradingPanel from "@/components/sim/SimTradingPanel";
+import dynamic from "next/dynamic";
+const TrackerApp = dynamic(() => import("@/components/tracker/TrackerApp"), { ssr: false });
 import type {
   DashboardResponse, AnalysisReport, ReportListItem, ProfessionalDashboard, MarketData,
 } from "@/lib/types";
@@ -432,7 +433,7 @@ export default function Home() {
         </div>
       )}
 
-      {tab === "sim" && <SimTradingPanel />}
+      {tab === "sim" && <TrackerApp />}
     </main>
   );
 }

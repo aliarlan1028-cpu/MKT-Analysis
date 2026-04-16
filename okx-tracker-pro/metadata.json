@@ -1,0 +1,6 @@
+{
+  "name": "OKX Tracker Pro",
+  "description": "实时跟踪OKX永续合约行情，集成智能K线形态识别、多维技术指标分析与模拟交易系统。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
